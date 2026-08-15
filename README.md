@@ -35,6 +35,17 @@ npm run build      # 构建
 npm run dist       # 打包 Windows 安装包（NSIS + zip）
 ```
 
+## 打包分发
+
+```bash
+node scripts/fetch-node.cjs   # 准备 runtime/node.exe（Node 22+，dsh 需要；首次打包前运行一次）
+npm run dist                  # 生成 release/ 下的 NSIS 安装器 + 便携 zip
+```
+
+- 产物：`release/DeepSeek ZhuoMian Setup <ver>.exe`（安装器）、`release/DeepSeek ZhuoMian-<ver>-win.zip`（便携版）
+- 应用内置 Node 运行时 + 完整 dsh 引擎，**对方无需安装 Node、无需联网下载**即可使用
+- 未签名（SmartScreen 会提示"更多信息→仍要运行"）；需要消除提示请配代码签名证书（`win.certificateFile`）
+
 ## 双模式（D1 启动器）
 
 应用内置官方 DeepSeek Harness Web UI 作为默认界面（1:1、填 API Key 即可真实使用），自绘 mock 作为备选：

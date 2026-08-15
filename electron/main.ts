@@ -108,34 +108,65 @@ function createWindow(): void {
  * 启动 DeepSeek Harness 后端（dsh web），作为本应用的本地引擎。
  * 端口固定为 BACKEND_PORT，避免与用户自己开的 3080 冲突。
  *
- * 打包后优先用【内置 dsh CLI】：以应用自带的 Electron 运行时直接执行
- * node_modules/@deepseek-ai/dsh/lib/bin.js（对方机器无需安装 Node、无需联网下载）；
- * 仅当内置缺失（开发环境未装依赖）时回退 npx 拉取。
+ * 关键：dsh 需要 Node >=22 的 API（stripTypeScriptTypes / zlib zstd），
+ * 而 Electron 33 内置 Node 只有 20 —— 所以必须用【真实 Node】跑内置 dsh：
+ * - 打包后：resources/node.exe（随安装包分发）+ app.asar.unpacked 里的内置 dsh
+ * - 开发时：系统 node 直接跑 node_modules 里的 dsh；无 node 则回退 npx
  */
 function startBackend(): void {
-  const bundledBin = path.join(__dirname, '../node_modules/@deepseek-ai/dsh/lib/bin.js')
+  const webArgs = ['web', '--port', String(BACKEND_PORT)]
   let cmd: string
   let args: string[]
-  if (existsSync(bundledBin)) {
-    cmd = process.execPath // 应用自己的 exe（Electron 运行时，含 Node）
-    args = [bundledBin, 'web', '--port', String(BACKEND_PORT)]
-    console.log('[dsh] using bundled dsh CLI: ' + bundledBin)
+  let shell = false
+
+  if (app.isPackaged) {
+    const node = path.join(process.resourcesPath, 'node.exe')
+    const bin = path.join(process.resourcesPath, 'app.asar.unpacked', 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js')
+    if (existsSync(node) && existsSync(bin)) {
+      cmd = node
+      args = [bin, ...webArgs]
+      console.log('[dsh] packaged mode: bundled node + bundled dsh')
+    } else {
+      cmd = 'npx'
+      args = ['--yes', '@deepseek-ai/dsh', ...webArgs]
+      shell = true
+      console.log('[dsh] packaged node missing, falling back to npx')
+    }
   } else {
-    cmd = 'npx'
-    args = ['--yes', '@deepseek-ai/dsh', 'web', '--port', String(BACKEND_PORT)]
-    console.log('[dsh] bundled dsh missing, falling back to npx')
+    const bin = path.join(__dirname, '../node_modules/@deepseek-ai/dsh/lib/bin.js')
+    if (existsSync(bin)) {
+      cmd = 'node'
+      args = [bin, ...webArgs]
+      console.log('[dsh] dev mode: system node + bundled dsh')
+    } else {
+      cmd = 'npx'
+      args = ['--yes', '@deepseek-ai/dsh', ...webArgs]
+      shell = true
+      console.log('[dsh] dev mode: bundled dsh missing, falling back to npx')
+    }
   }
 
   try {
     backend = spawn(cmd, args, {
       windowsHide: true,
-      shell: cmd === 'npx',
+      shell,
       env: { ...process.env, NO_UPDATE_NOTIFIER: '1' },
     })
     backendPort = BACKEND_PORT
 
     backend.stdout?.on('data', (d: Buffer) => console.log(`[dsh] ${d.toString().trim()}`))
     backend.stderr?.on('data', (d: Buffer) => console.error(`[dsh:err] ${d.toString().trim()}`))
+    backend.on('error', (err) => {
+      // 系统 node 缺失时回退 npx
+      console.error('[dsh] spawn error, falling back to npx:', err.message)
+      backend = spawn('npx', ['--yes', '@deepseek-ai/dsh', ...webArgs], {
+        windowsHide: true,
+        shell: true,
+        env: { ...process.env, NO_UPDATE_NOTIFIER: '1' },
+      })
+      backend.stdout?.on('data', (d: Buffer) => console.log(`[dsh] ${d.toString().trim()}`))
+      backend.stderr?.on('data', (d: Buffer) => console.error(`[dsh:err] ${d.toString().trim()}`))
+    })
     backend.on('exit', (code) => {
       console.log(`[dsh] backend exited with code ${code}`)
       backend = null

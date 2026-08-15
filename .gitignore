@@ -3,6 +3,7 @@ dist/
 dist-electron/
 release/
 .npm-cache/
+runtime/
 *.log
 .DS_Store
 

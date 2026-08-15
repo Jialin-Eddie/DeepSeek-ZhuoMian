@@ -45,6 +45,13 @@
       "dist-electron/**/*",
       "package.json"
     ],
+    "extraResources": [
+      {
+        "from": "runtime/node.exe",
+        "to": "node.exe"
+      }
+    ],
+    "npmRebuild": false,
     "asarUnpack": [
       "node_modules/@deepseek-ai/**"
     ],
@@ -52,7 +59,8 @@
       "target": [
         "nsis",
         "zip"
-      ]
+      ],
+      "signAndEditExecutable": false
     },
     "nsis": {
       "oneClick": false,
