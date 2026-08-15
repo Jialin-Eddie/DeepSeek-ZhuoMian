@@ -1,0 +1,17 @@
+node_modules/
+dist/
+dist-electron/
+release/
+.npm-cache/
+*.log
+.DS_Store
+
+# 探索/验证产物（可重新生成，不入库）
+explore-out/
+harness-assets/
+shot-*.png
+shot-dom.html
+shot-text.txt
+probe*.json
+verify*.json
+verify*.txt
