@@ -38,7 +38,7 @@
 ### E. 发布物与更新通道（人工 + 自动）
 - [ ] 👁 打包产物不含 `~/.dsh` 用户数据（会话/API Key 只在用户机器，不进安装包）
 - [ ] 👁 自动更新（electron-updater）走 GitHub Releases + `latest.yml` 校验；正式发布建议加代码签名证书
-- [ ] ✅ `npm audit` 无高危漏洞（或已知并记录）
+- [ ] ✅ `npm audit` 无高危漏洞（或已知并记录）—— **2026-08-17 实测：生产依赖 0 漏洞；17 个已知漏洞全部位于打包工具链（electron-builder/vite 系 devDependencies），不进安装包，不影响终端用户**
 
 ### F. GitHub 仓库设置（一次性，人工，public 后做）
 - [ ] 👁 开启 **Secret scanning**（仓库 Settings → Code security）

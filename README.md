@@ -3,6 +3,8 @@
 > 🐋 Unofficial · 非官方项目 ｜ 基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（MIT）的 Windows 桌面客户端
 >
 > 目标：**双击即用，不用打开终端，不用复制粘贴链接**。
+>
+> 仓库：<https://github.com/Jialin-Eddie/DeepSeek-ZhuoMian>（public，自动更新源）
 
 ## 功能（第一批 MVP）
 
@@ -12,6 +14,17 @@
 - B4 界面：**终端风 ⇄ 聊天风** 一键切换
 - 本地引擎：自动拉起 DeepSeek Harness 后端（`dsh web`）
 - **Ctrl+S 提示词便签**：输入框有字 = 存入当前工作区便签；空 = 弹出列表恢复（↑↓ Enter 插入 / × 删除）；按工作区分文件，存于 `~/.dsh/stash/`
+- **自动更新**：electron-updater + GitHub Releases（仅安装版生效；便携版/开发模式自动跳过）
+
+## 安全检查（每次 push 前强制）
+
+```bash
+npm run security    # 全绿才允许 push（scripts/security-check.cjs）
+```
+
+- 已安装 git pre-push 钩子：`git push` 自动先跑安全检查，不过关自动中止（紧急跳过：`SKIP_SECURITY_CHECK=1 git push`，危险，慎用）
+- 检查项与依据见 [SECURITY_CHECKLIST.md](./SECURITY_CHECKLIST.md)
+- 新克隆仓库后先执行 `node scripts/install-git-hooks.cjs` 重装钩子
 
 ## UI 还原（对照官方 DeepSeek Harness Web）
 
