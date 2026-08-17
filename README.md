@@ -6,6 +6,8 @@
 >
 > 仓库：<https://github.com/Jialin-Eddie/DeepSeek-ZhuoMian>（public，自动更新源）
 
+> 接手项目？先读 [docs/HANDOVER.md](./docs/HANDOVER.md)（架构、换包 SOP、"重启一直失败"复盘、排查速查）。
+
 ## 功能（第一批 MVP）
 
 - 流式对话 + 工具调用卡片 + Diff 高亮（规划中接入真实引擎）
@@ -22,11 +24,18 @@
 
 ### v0.1.2 新功能
 
-- **↑ 历史提示词（功能1）**：输入框为空时按 `↑` 弹出本对话历史提示词（引擎真实历史，分页拉取），`↑↓` 选择、`Enter` 回填、`Esc` 关闭；输入框有内容时 `↑` 仍为正常光标移动
 - **右侧参照对话分栏（功能2）**：左侧会话行悬停出现「参照」按钮，点击在右侧打开该对话（类似 split），可滚动阅读问/答；每条消息可「☆ 收藏」句子（存 `~/.dsh/reference/`，跨会话保留）；底部「复制全部收藏」一键复制；`✕` 关闭
 - **会话停留位置（功能3）**：模型响应结束后，画面自动滚动让**本次提示词停在屏幕中间**（从这里开始阅读）；切换回会话时同理；用户主动滚动时 1.5s 内不抢
 - **右下角通知（功能4）**：每轮响应完成在右下角弹提醒（含提示词摘要+时间），**点击跳转到该提示词**，约 3 秒自动消失，多条可堆叠（最多 5 条）
 - **全量 prompt 轨道（功能5）**：右侧轨道从**引擎 API 分页拉取该对话全部提示词节点**（不再受官方「加载更早」增量加载限制），悬停预览、点击跳转（未加载部分自动点「加载更早」补齐）
+
+### v0.1.3 新功能
+
+- **斜杠命令菜单（命令看得见）**：输入框里打 `/` 自动弹出浅色命令菜单（/btw 旁注 · /rewind 回退 · /checkpoint 检查点，含说明），`↑↓` 选择、Enter/Tab/点击填入；完整命令 + Enter 直接执行
+- **命令成功反馈**：`/btw`、`/checkpoint` 成功后右下角弹浅色「已保存 ✓」提示（不再静默）；`/rewind` 选择框改为浅色风格
+- **↑ 自动填充历史提示词（重写功能1）**：空输入框按 `↑` **直接填入**最近一条提示词（不再弹选择列表）；未修改时再按 `↑` = 更早一条，`↓` = 往回，最新一条再按 `↓` = 清空；填完可编辑，自己打字时 `↑` 不打扰
+- **prompt 轨道浅色长条样式**：节点改成长条（浅色背景，最新一条蓝色高亮）
+- **启动自检日志**：每个功能注入后向 `~/.dsh/stash/diag.log` 写 `xxx: installed`；未知斜杠命令也记日志，排查"功能不见了"不再靠猜
 
 > 边界说明（详见 BUGS.md F 节）：`/rewind` 的语义是**分叉**（引擎没有"删除后续消息"的 API，官方"分叉"即正道）；`auto mode` 需要引擎级开发（审批无 per-tool 自动批准），不提供伪造版本；mock 界面含演示实现。
 
@@ -39,14 +48,15 @@ npm run test        # ② 功能测试：语法 + 单元 + 端到端探针（scr
 
 - 已安装 git pre-push 钩子：`git push` 自动先跑**安全检查 + 功能测试**，任一不过关自动中止（紧急跳过：`SKIP_SECURITY_CHECK=1 git push`，危险，慎用）
 - 功能测试组成：
-  - 语法检查：所有注入页面脚本（READ/CLEAR/CLOSE/TOAST/RAIL/BTW/REWIND/OVERLAY + v0.1.2 的 SCROLL/HISTORY/NOTIFY/RAIL_ALL/REFERENCE）能通过 JS 解析
+  - 语法检查：所有注入页面脚本（READ/CLEAR/CLOSE/TOAST/RAIL/BTW/REWIND/SLASH_MENU/OVERLAY + v0.1.2 的 SCROLL/HISTORY/NOTIFY/RAIL_ALL/REFERENCE）能通过 JS 解析
   - 单元测试：便签/检查点/参照收藏存储（增删去重上限）+ 引擎 RPC（`listSessions`/`resolveActiveWorkspace`/`historyTail`，引擎在线时）
   - 端到端探针（需引擎 3099 在线，否则 WARN 跳过）：
     - `probe-v011`：/btw（含全角斜杠/空内容）、Ctrl+S 清空、/rewind 浮层与 fork 请求构造、/checkpoint、prompt 轨道尺寸
     - `probe-v012-scroll`：功能3 响应结束滚动定位（turn-tail 信号 → 提示词居中）+ 防打扰
-    - `probe-v012-history`：功能1 ↑ 历史提示词（浮层/回填/选择/关闭/不干扰光标）
+    - `probe-v012-history`：功能1 ↑ 自动填充（填最近/再↑更早/↓往回/清空/不打扰）
+    - `probe-v012-slash`：斜杠菜单（弹出/过滤/填入）+ /btw /checkpoint 成功提示 + /rewind 浅色选择框 + 未知命令日志
     - `probe-v012-notify`：功能4 右下角通知（弹出/堆叠/点击跳转/3s 消失）
-    - `probe-v012-railall`：功能5 全量节点轨道（节点数 > DOM 已渲染数 + 跳转）
+    - `probe-v012-railall`：功能5 全量节点轨道（节点数 > DOM 已渲染数 + 跳转 + 浅色长条样式）
     - `probe-v012-reference`：功能2 参照分栏（按钮注入/面板/收藏/复制/关闭）
   - fork 用 fetch 桩拦截，无副作用
 - 检查项与依据见 [SECURITY_CHECKLIST.md](./SECURITY_CHECKLIST.md)

@@ -23,7 +23,7 @@ contextBridge.exposeInMainWorld('dshDesktop', {
   checkpointSave: (input) => ipcRenderer.invoke('probe:record', { kind: 'checkpointSave', input }),
   checkpointDelete: () => Promise.resolve(true),
   btwNote: (note) => ipcRenderer.invoke('probe:record', { kind: 'btwNote', note }),
-  diagLog: () => Promise.resolve(true),
+  diagLog: (msg) => ipcRenderer.invoke('probe:record', { kind: 'diagLog', msg }),
   stashDelete: () => Promise.resolve(true),
   stashClosed: () => Promise.resolve(true),
 })

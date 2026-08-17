@@ -23,6 +23,7 @@ export const SCROLL_SCRIPT = `(function () {
   if (window.__dshScrollInstalled) return;
   window.__dshScrollInstalled = true;
   window.__dshScrollDiag = { tailHandled: 0, scrollAttempts: 0, lastError: null, skipped: [], lastKey: null, userScrollingAtTail: 0 };
+  (function () { try { if (window.dshDesktop && window.dshDesktop.diagLog) window.dshDesktop.diagLog('scroll: installed'); } catch (e) {} })();
 
   var lastScrolledKey = null;   // 上次已定位的 user 节点 key（会话切换路径去重用）
   var lastTurnTailKey = null;   // 上次处理过的 turn-tail key（每轮结束信号去重用）
@@ -168,7 +169,7 @@ export const SCROLL_SCRIPT = `(function () {
 export const HISTORY_SCRIPT = `(function () {
   if (window.__dshHistoryInstalled) return;
   window.__dshHistoryInstalled = true;
-  window.__dshHistoryDiag = { onKey: 0, upOnEmpty: 0, opened: 0, fetchDone: 0, fetchEmpty: 0, err: null };
+  window.__dshHistoryDiag = { onKey: 0, upStart: 0, upNext: 0, downPrev: 0, downClear: 0, filled: 0, fetchDone: 0, fetchEmpty: 0, promptCount: 0, err: null };
 
   function rpc(method, payload) {
     return fetch('/api/' + method, {
@@ -271,84 +272,77 @@ export const HISTORY_SCRIPT = `(function () {
     ta.dispatchEvent(new Event('input', { bubbles: true }));
   }
 
-  var overlay = null;
-  var listEl = null;
-  var sel = 0;
-  var items = [];
+  function dlog(msg) { try { if (window.dshDesktop && window.dshDesktop.diagLog) window.dshDesktop.diagLog(msg); } catch (e) {} }
 
-  function close() {
-    if (overlay) { overlay.remove(); overlay = null; listEl = null; items = []; }
+  // ── 终端式历史自动填充（v0.1.3 起，替代旧的选择浮层）──────────
+  // 空输入框按 ↑：填入最近一条提示词；未修改时再按 ↑：更早一条；
+  // ↓ 往回；到最新一条再按 ↓：清空。用户改过内容后不打扰。
+  var state = { prompts: [], idx: -1, filledText: null, loading: false, wantIdx: -1 };
+
+  function reset() {
+    state.prompts = [];
+    state.idx = -1;
+    state.filledText = null;
+    state.loading = false;
+    state.wantIdx = -1;
   }
 
-  function render() {
-    if (!listEl) return;
-    listEl.innerHTML = '';
-    items.forEach(function (it, i) {
-      var row = document.createElement('div');
-      Object.assign(row.style, {
-        display: 'flex', alignItems: 'center', gap: '8px', padding: '7px 10px', borderRadius: '8px', cursor: 'pointer',
-        background: i === sel ? '#1b2530' : 'transparent'
-      });
-      var idx = document.createElement('span');
-      idx.textContent = String(i + 1).padStart(2, '0');
-      Object.assign(idx.style, { color: '#5b6470', fontFamily: 'monospace', fontSize: '11px', flex: '0 0 auto' });
-      var body = document.createElement('div');
-      body.textContent = it.text;
-      Object.assign(body.style, { flex: '1', minWidth: '0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' });
-      row.appendChild(idx); row.appendChild(body);
-      row.onclick = function () { choose(i); };
-      row.onmouseenter = function () { sel = i; render(); };
-      listEl.appendChild(row);
+  function toastLight(msg) {
+    var old = document.getElementById('dsh-feature-toast');
+    if (old) old.remove();
+    var t = document.createElement('div');
+    t.id = 'dsh-feature-toast';
+    t.textContent = msg;
+    Object.assign(t.style, {
+      position: 'fixed', left: '50%', bottom: '28px', transform: 'translateX(-50%)',
+      zIndex: '2147483647', background: '#ffffff', color: '#1f2733',
+      border: '1px solid #d5dae0', borderRadius: '8px', padding: '8px 14px', fontSize: '13px',
+      boxShadow: '0 6px 20px rgba(31,39,51,.18)',
+      fontFamily: '-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif'
     });
-    if (items.length === 0) {
-      var empty = document.createElement('div');
-      empty.textContent = '这个对话还没有可用的历史提示词';
-      Object.assign(empty.style, { padding: '20px', textAlign: 'center', color: '#8a94a3' });
-      listEl.appendChild(empty);
-    }
-    var rows = listEl.children;
-    if (rows[sel]) rows[sel].scrollIntoView({ block: 'nearest' });
+    document.body.appendChild(t);
+    setTimeout(function () { var el = document.getElementById('dsh-feature-toast'); if (el) el.remove(); }, 2200);
   }
 
-  function choose(i) {
+  function fillWith(idx) {
     var ta = findComposer();
-    if (ta && items[i]) setComposerValue(ta, items[i].text);
-    close();
-    if (ta) ta.focus();
+    var p = state.prompts[idx];
+    if (!ta || !p) return;
+    setComposerValue(ta, p.text);
+    state.idx = idx;
+    state.filledText = p.text;
+    window.__dshHistoryDiag.filled++;
+    dlog('history: fill #' + (state.prompts.length - idx) + '/' + state.prompts.length);
+    try { ta.focus(); } catch (e) {}
   }
 
-  function buildOverlay() {
-    close();
-    overlay = document.createElement('div');
-    overlay.id = 'dsh-history-overlay';
-    Object.assign(overlay.style, {
-      position: 'fixed', left: '50%', bottom: '120px', transform: 'translateX(-50%)',
-      width: '640px', maxWidth: '92vw', maxHeight: '40vh', display: 'flex', flexDirection: 'column',
-      background: '#0f1115', color: '#e6e9ed', border: '1px solid #2a3542', borderRadius: '12px',
-      zIndex: '2147483647', boxShadow: '0 12px 40px rgba(0,0,0,.55)',
-      fontFamily: '-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif',
-      fontSize: '13px', overflow: 'hidden'
+  /** 首次 ↑：拉取本会话提示词（最近在前）；连按 ↑ 会累积目标条数 */
+  function startHistory() {
+    window.__dshHistoryDiag.upStart++;
+    if (state.loading) { state.wantIdx++; return; }
+    state.loading = true;
+    state.wantIdx = 0;
+    activeSessionId().then(function (sid) {
+      if (!sid) { reset(); return; }
+      fetchUserPrompts(sid).then(function (list) {
+        state.loading = false;
+        window.__dshHistoryDiag.fetchDone++;
+        if (!list || list.length === 0) {
+          window.__dshHistoryDiag.fetchEmpty++;
+          toastLight('这个对话还没有可用的历史提示词');
+          reset();
+          return;
+        }
+        state.prompts = list; // 最近在前
+        window.__dshHistoryDiag.promptCount = list.length;
+        fillWith(Math.min(state.wantIdx, list.length - 1));
+      }).catch(function (err) {
+        state.loading = false;
+        window.__dshHistoryDiag.err = String(err);
+        dlog('history: fetch error ' + String(err));
+        reset();
+      });
     });
-    var head = document.createElement('div');
-    Object.assign(head.style, {
-      display: 'flex', alignItems: 'center', gap: '8px', padding: '9px 14px',
-      borderBottom: '1px solid #1e2732', flex: '0 0 auto'
-    });
-    var hTitle = document.createElement('span');
-    hTitle.textContent = '历史提示词';
-    Object.assign(hTitle.style, { fontWeight: '600' });
-    var hSub = document.createElement('span');
-    hSub.textContent = '↑↓ 选择 · Enter 回填 · Esc 关闭';
-    Object.assign(hSub.style, { color: '#8a94a3', fontSize: '12px', flex: '1', textAlign: 'right' });
-    head.appendChild(hTitle); head.appendChild(hSub);
-    overlay.appendChild(head);
-    listEl = document.createElement('div');
-    listEl.tabIndex = -1;
-    Object.assign(listEl.style, { overflowY: 'auto', flex: '1 1 auto', padding: '6px', outline: 'none' });
-    overlay.appendChild(listEl);
-    document.body.appendChild(overlay);
-    render();
-    listEl.focus();
   }
 
   /** 返回输入框是否为空（无内容且光标在最前） */
@@ -359,71 +353,64 @@ export const HISTORY_SCRIPT = `(function () {
     return true;
   }
 
-  function openHistory() {
-    if (overlay) return; // 已在浏览中
-    window.__dshHistoryDiag.opened++;
-    activeSessionId().then(function (sid) {
-      if (!sid) return;
-      fetchUserPrompts(sid).then(function (list) {
-        window.__dshHistoryDiag.fetchDone++;
-        if (list.length === 0) { window.__dshHistoryDiag.fetchEmpty++; }
-        if (list.length === 0) {
-          var ta = findComposer();
-          var old = document.getElementById('dsh-feature-toast');
-          if (old) old.remove();
-          var t = document.createElement('div');
-          t.id = 'dsh-feature-toast';
-          t.textContent = '这个对话还没有可用的历史提示词';
-          Object.assign(t.style, {
-            position: 'fixed', left: '50%', bottom: '28px', transform: 'translateX(-50%)',
-            zIndex: '2147483647', background: '#1b222c', color: '#e6e9ed',
-            border: '1px solid #2a3542', borderRadius: '8px', padding: '8px 14px', fontSize: '13px'
-          });
-          document.body.appendChild(t);
-          setTimeout(function () { var el = document.getElementById('dsh-feature-toast'); if (el) el.remove(); }, 2000);
-          return;
-        }
-        items = list;
-        sel = 0;
-        buildOverlay();
-      });
-    });
-  }
-
   function onKey(e) {
     window.__dshHistoryDiag.onKey++;
     if (e.isComposing) return;
     if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
-    if (overlay) {
-      // 浮层打开时：↑↓ 选择（焦点在浮层内，无需 composer 检查）
-      if (e.key === 'ArrowUp') { e.preventDefault(); e.stopPropagation(); sel = Math.max(0, sel - 1); render(); }
-      else if (e.key === 'ArrowDown') { e.preventDefault(); e.stopPropagation(); sel = Math.min(items.length - 1, sel + 1); render(); }
-      return;
-    }
+    // 斜杠菜单打开时让位给菜单导航
+    if (window.__dshSlashOpen) return;
     var ta = document.activeElement && document.activeElement.tagName === 'TEXTAREA' ? document.activeElement : findComposer();
     if (!ta || document.activeElement !== ta) return;
-    // 只在空输入框接管 ↑（终端式历史）
-    if (e.key === 'ArrowUp' && isEmptyComposer(ta)) {
-      window.__dshHistoryDiag.upOnEmpty++;
-      e.preventDefault();
-      e.stopPropagation();
-      e.stopImmediatePropagation();
-      openHistory();
+
+    if (e.key === 'ArrowUp') {
+      if (isEmptyComposer(ta)) {
+        // 空框：开始/继续从最近一条填
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        if (state.prompts.length === 0 || state.loading) startHistory();
+        else fillWith(0);
+        return;
+      }
+      if (state.filledText !== null && ta.value === state.filledText && state.idx < state.prompts.length - 1) {
+        // 填过且未修改：再往上一条
+        window.__dshHistoryDiag.upNext++;
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        fillWith(state.idx + 1);
+        return;
+      }
+      // 用户自己打的字：不打扰
+      return;
+    }
+    if (e.key === 'ArrowDown') {
+      if (state.filledText !== null && ta.value === state.filledText) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        if (state.idx > 0) {
+          window.__dshHistoryDiag.downPrev++;
+          fillWith(state.idx - 1);
+        } else {
+          window.__dshHistoryDiag.downClear++;
+          setComposerValue(ta, '');
+          reset();
+        }
+      }
     }
   }
   window.addEventListener('keydown', onKey, true);
 
-  // 浮层内 Enter 回填 / Esc 关闭
-  document.addEventListener('keydown', function (e) {
-    if (!overlay) return;
-    if (e.key === 'Enter') {
-      e.preventDefault(); e.stopPropagation();
-      if (items[sel]) choose(sel);
-    } else if (e.key === 'Escape') {
-      e.preventDefault(); e.stopPropagation();
-      close();
-    }
+  // 用户改动/清空输入框时维护状态（发消息后官方会清空 → 复位）
+  document.addEventListener('input', function (e) {
+    var ta = e.target && e.target.tagName === 'TEXTAREA' ? e.target : null;
+    if (!ta) return;
+    if (state.filledText !== null && ta.value !== state.filledText) state.filledText = null;
+    if ((ta.value || '') === '' && state.idx !== -1 && state.filledText === null && !state.loading) reset();
   }, true);
+
+  dlog('history: installed');
 })()`
 
 /**
@@ -439,6 +426,7 @@ export const NOTIFY_SCRIPT = `(function () {
   if (window.__dshNotifyInstalled) return;
   window.__dshNotifyInstalled = true;
   window.__dshNotifyDiag = { shown: 0, clicked: 0 };
+  (function () { try { if (window.dshDesktop && window.dshDesktop.diagLog) window.dshDesktop.diagLog('notify: installed'); } catch (e) {} })();
 
   var lastTailKey = null;
   var box = null;
@@ -573,6 +561,7 @@ export const NOTIFY_SCRIPT = `(function () {
 export const RAIL_ALL_SCRIPT = `(function () {
   if (window.__dshRailAllInstalled) return;
   window.__dshRailAllInstalled = true;
+  (function () { try { if (window.dshDesktop && window.dshDesktop.diagLog) window.dshDesktop.diagLog('railall: installed'); } catch (e) {} })();
 
   var RAIL_ID = 'dsh-prompt-rail-all';
   var TIP_ID = 'dsh-prompt-rail-all-tip';
@@ -832,6 +821,7 @@ export const REFERENCE_SCRIPT = `(function () {
   if (window.__dshReferenceInstalled) return;
   window.__dshReferenceInstalled = true;
   window.__dshReferenceDiag = { opened: 0, collected: 0, copied: 0, closed: 0 };
+  (function () { try { if (window.dshDesktop && window.dshDesktop.diagLog) window.dshDesktop.diagLog('reference: installed'); } catch (e) {} })();
 
   var PANEL_ID = 'dsh-reference-panel';
   var panel = null;

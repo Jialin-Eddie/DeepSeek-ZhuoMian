@@ -16,10 +16,11 @@ check('TOAST', P.buildToastScript('已保存到提示词便签 · C_Users_x'))
 check('RAIL_SCRIPT', F.RAIL_SCRIPT)
 check('BTW_SCRIPT', F.BTW_SCRIPT)
 check('REWIND_SCRIPT', F.REWIND_SCRIPT)
+check('SLASH_MENU_SCRIPT（斜杠命令菜单）', F.SLASH_MENU_SCRIPT)
 
 // v0.1.2 新功能脚本（功能1~5）
 check('SCROLL_SCRIPT（功能3 滚动定位）', V.SCROLL_SCRIPT)
-check('HISTORY_SCRIPT（功能1 历史提示词）', V.HISTORY_SCRIPT)
+check('HISTORY_SCRIPT（功能1 ↑自动填充）', V.HISTORY_SCRIPT)
 check('NOTIFY_SCRIPT（功能4 右下角通知）', V.NOTIFY_SCRIPT)
 check('RAIL_ALL_SCRIPT（功能5 全量节点轨道）', V.RAIL_ALL_SCRIPT)
 check('REFERENCE_SCRIPT（功能2 右侧参照分栏）', V.REFERENCE_SCRIPT)

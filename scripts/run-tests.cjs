@@ -16,6 +16,15 @@ function run(name, cmd, args, opts = {}) {
   return r
 }
 
+// 0) 先编译主进程 TS（探针 require dist-electron/*.js 的产物）
+;(() => {
+  const tscJs = path.join(ROOT, 'node_modules', 'typescript', 'bin', 'tsc')
+  console.log('\n===== 编译主进程 TS =====')
+  const r = spawnSync(process.execPath, [tscJs, '-p', path.join(ROOT, 'tsconfig.electron.json')], { cwd: ROOT, encoding: 'utf8', stdio: 'inherit' })
+  if (r.error) { console.log('  [编译启动失败]', String(r.error)); failed.push('编译') }
+  else if (r.status !== 0) failed.push('编译')
+})()
+
 // 1) 注入脚本语法（不依赖引擎）
 run('语法检查 stash-syntax-test', process.execPath, [path.join(ROOT, 'scripts', 'stash-syntax-test.cjs')])
 
@@ -37,7 +46,8 @@ run('单元测试 unit-tests', process.execPath, [path.join(ROOT, 'scripts', 'un
     const probes = [
       { name: '端到端探针 probe-v011（btw/rewind/clear/rail）', file: 'probe-v011.cjs' },
       { name: '端到端探针 v012-scroll（功能3 滚动定位）', file: 'probe-v012-scroll.cjs' },
-      { name: '端到端探针 v012-history（功能1 历史提示词）', file: 'probe-v012-history.cjs' },
+      { name: '端到端探针 v012-history（功能1 ↑自动填充）', file: 'probe-v012-history.cjs' },
+      { name: '端到端探针 v012-slash（斜杠命令菜单+命令反馈）', file: 'probe-v012-slash.cjs' },
       { name: '端到端探针 v012-notify（功能4 右下角通知）', file: 'probe-v012-notify.cjs' },
       { name: '端到端探针 v012-railall（功能5 全量节点轨道）', file: 'probe-v012-railall.cjs' },
       { name: '端到端探针 v012-reference（功能2 右侧参照分栏）', file: 'probe-v012-reference.cjs' },

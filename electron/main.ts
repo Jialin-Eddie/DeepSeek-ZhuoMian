@@ -7,7 +7,7 @@ import path from 'node:path'
 import { loadStash, savePrompt, deletePrompt, sanitizeKey, appendBtwNote } from './stashStore'
 import { resolveActiveWorkspace, resolveActiveSessionId, historyTail } from './engineRpc'
 import { READ_SCRIPT, CLEAR_SCRIPT, CLOSE_OVERLAY_SCRIPT, buildToastScript, buildOverlayScript } from './stashPage'
-import { RAIL_SCRIPT, BTW_SCRIPT, REWIND_SCRIPT } from './featuresPage'
+import { RAIL_SCRIPT, BTW_SCRIPT, REWIND_SCRIPT, SLASH_MENU_SCRIPT } from './featuresPage'
 import { SCROLL_SCRIPT, HISTORY_SCRIPT, NOTIFY_SCRIPT, RAIL_ALL_SCRIPT, REFERENCE_SCRIPT } from './featuresV012'
 import { loadCheckpoints, saveCheckpoint, deleteCheckpoint } from './checkpointStore'
 import { loadReferences, addReference, deleteReference } from './referenceStore'
@@ -145,9 +145,11 @@ function createWindow(): void {
 
   // 启动确认：新版启动后在页面右下弹一次提示（也是"代码是否生效"的信号）
   mainWindow.webContents.on('did-finish-load', () => {
-    void showToast(mainWindow!, '提示词便签已启用：输入框内 Ctrl+S 保存 · 空输入 Ctrl+S 恢复')
-    // 注入功能脚本：prompt 轨道 + /btw 旁注（page world，不碰官方资产）
+    void showToast(mainWindow!, '提示词便签：Ctrl+S 保存/恢复 · 输入 / 可查看命令（/btw 旁注 · /rewind 回退 · /checkpoint 检查点）')
+    // 注入功能脚本：prompt 轨道 + 斜杠菜单 + /btw 旁注 + /rewind（page world，不碰官方资产）
+    // 斜杠菜单必须先注入：它的 Enter 处理在 BTW/REWIND 之前运行
     void mainWindow!.webContents.executeJavaScript(RAIL_SCRIPT, true).catch((err) => diag(`rail inject failed ${String(err)}`))
+    void mainWindow!.webContents.executeJavaScript(SLASH_MENU_SCRIPT, true).catch((err) => diag(`slash inject failed ${String(err)}`))
     void mainWindow!.webContents.executeJavaScript(BTW_SCRIPT, true).catch((err) => diag(`btw inject failed ${String(err)}`))
     void mainWindow!.webContents.executeJavaScript(REWIND_SCRIPT, true).catch((err) => diag(`rewind inject failed ${String(err)}`))
     // v0.1.2 新功能：滚动定位 / 历史提示词 / 右下角通知 / 全量 prompt 轨道 / 右侧参照分栏

@@ -243,3 +243,30 @@ SyntaxError: The requested module 'node:module' does not provide an export named
 - 打包前：`node scripts/fetch-node.cjs`（准备 runtime/node.exe，被 .gitignore 排除）→ `npm run dist`。
 - 产物：`release/DeepSeek ZhuoMian Setup <ver>.exe`（安装器）、`release/...-win.zip`（便携版）。
 - 探索/验证脚本的 URL/输出走环境变量，别走 argv（见 A6）。
+
+---
+
+## I. v0.1.3 批次：斜杠菜单 / 命令反馈 / ↑ 自动填充 / 浅色轨道
+
+### 背景问题（用户反馈根因）
+- "为什么还是没有 /rewind /checkpoint /btw 命令？"——**代码一直都在**（v0.1.1 就有，检查运行中 asar 确认 `__dshBtwInstalled`/`__dshRewindInstalled` 存在），真正原因是"看不见、没反馈"：
+  1. 界面没有任何入口：启动 toast 只提 Ctrl+S，输入 "/" 无任何反应 → 用户不知道命令存在。
+  2. `/btw`、`/checkpoint` 成功后无任何提示（只有静默清空输入框）→ 试了也以为没生效。
+  3. `/rewind` 选择框是黑底（`#0f1115`）→ 用户反感黑底，可能没认出来。
+- 诊断方法：查 `~/.dsh/stash/diag.log`——只有 Ctrl+S 记录，没有任何 btw/rewind/checkpoint 触发记录 → 定位为"发现性+反馈"问题，而非代码缺失。**教训：功能"做出来了"不等于"用户能用"；每个命令必须有可见入口 + 成功反馈 + 日志。**
+
+### 实现
+- 新增 `SLASH_MENU_SCRIPT`（featuresPage.ts）：输入以 `/` 开头且无空格时弹浅色菜单（3 命令 + 说明），↑↓/Enter/Tab/点击填入；完整命令 + Enter → 关菜单让 BTW/REWIND 执行；`window.__dshSlashOpen` 供历史自动填充避让。**注入顺序：slash 必须先于 btw/rewind**（main.ts 已按此顺序）。
+- `BTW_SCRIPT`/`REWIND_SCRIPT`：成功 toast（"旁注已保存 ✓"/"检查点已保存 ✓：名字"，浅色）；`/rewind` 选择框全套浅色化（白底 `#ffffff` + `#d5dae0` 边框 + `#eef3fa` 选中）；`PAGE_UTILS.toast` 改浅色；未知斜杠命令记 `slash: unknown command` 日志（消息仍正常发出）。
+- `HISTORY_SCRIPT` 重写为终端式自动填充（替代选择浮层）：空框 ↑ → 填最近一条；未修改再 ↑ → 更早一条（连按累积 `wantIdx`，加载完成后一次到位）；↓ 往回；最新一条再 ↓ → 清空；`input` 事件监听维护"用户改过=断开链条/清空=复位"；`window.__dshSlashOpen` 时让位。
+- 全部 9 个注入脚本加 `xxx: installed` 自检日志（写 diag.log），启动 toast 提示"输入 / 可查看命令"。
+- 版本 0.1.3；`run-tests.cjs` 开头自动跑 tsc（探针 require dist-electron 产物）；新探针 `probe-v012-slash.cjs`；history 探针重写为自动填充断言。
+
+### 探针/测试踩坑
+- history 探针断言"第二条 ≠ 第一条"在只有 1 条用户提示词的会话会误报 → `__dshHistoryDiag.promptCount` 暴露后，<2 条时 SKIP 该断言。
+- slash 探针必须用 `input` 事件驱动菜单（keydown '/' 的 setTimeout 路径难以稳定断言）；Enter 断言分两种：菜单打开+完整命令 → 交给命令脚本；菜单打开+部分命令 → 填入。
+- `probe:record` IPC 返回 `{ok:true}` → preload 桩的 `btwNote`/`checkpointSave` 天然满足"成功 toast"断言；`diagLog` 桩改为记录消息以断言 `slash: unknown command` / `slash: installed`。
+
+### 其他修复/怪事
+- **GitHub release v0.1.2 漏传 latest.yml** → 安装版自动更新检查 404（用户 diag.log 里 `auto-update: check failed ... HttpError: 404`）。v0.1.3 发版必须带 latest.yml。
+- **package.json 曾在工作区凭空消失**（git status 显示 D，构建才发现）→ `git checkout -- package.json` 恢复。若构建报找不到 package.json，先查 git status。

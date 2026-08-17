@@ -26,9 +26,9 @@ const PAGE_UTILS = `{
     t.textContent = msg;
     Object.assign(t.style, {
       position: 'fixed', left: '50%', bottom: '28px', transform: 'translateX(-50%)',
-      zIndex: '2147483647', background: '#1b222c', color: '#e6e9ed',
-      border: '1px solid #2a3542', borderRadius: '8px', padding: '8px 14px',
-      fontSize: '13px', boxShadow: '0 4px 16px rgba(0,0,0,.4)',
+      zIndex: '2147483647', background: '#ffffff', color: '#1f2733',
+      border: '1px solid #d5dae0', borderRadius: '8px', padding: '8px 14px',
+      fontSize: '13px', boxShadow: '0 6px 20px rgba(31,39,51,.18)',
       fontFamily: '-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif',
       maxWidth: '70vw', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
     });
@@ -60,6 +60,7 @@ const PAGE_UTILS = `{
 export const RAIL_SCRIPT = `(function () {
   if (window.__dshRailInstalled) return;
   window.__dshRailInstalled = true;
+  (function () { try { if (window.dshDesktop && window.dshDesktop.diagLog) window.dshDesktop.diagLog('rail: installed'); } catch (e) {} })();
   var RAIL_ID = 'dsh-prompt-rail';
   var TIP_ID = 'dsh-prompt-rail-tip';
 
@@ -144,6 +145,7 @@ export const BTW_SCRIPT = `(function () {
   if (window.__dshBtwInstalled) return;
   window.__dshBtwInstalled = true;
   var U = ${PAGE_UTILS};
+  U.diag('btw: installed');
 
   function onKey(e) {
     if (e.isComposing) return;
@@ -167,7 +169,9 @@ export const BTW_SCRIPT = `(function () {
       U.diag('btw: match noteLen=' + note.length);
       window.dshDesktop.btwNote(note).then(function (r) {
         U.diag('btw: ipc ok=' + !!(r && r.ok));
-      }).catch(function (err) { U.diag('btw: ipc error ' + String(err)); });
+        if (r && r.ok) U.toast('旁注已保存 ✓（不发给模型）');
+        else U.toast('旁注保存失败');
+      }).catch(function (err) { U.diag('btw: ipc error ' + String(err)); U.toast('旁注保存失败：' + String(err)); });
       U.setComposerValue(ta, '');
     } else {
       U.diag('btw: dshDesktop missing');
@@ -183,6 +187,7 @@ export const REWIND_SCRIPT = `(function () {
   if (window.__dshRewindInstalled) return;
   window.__dshRewindInstalled = true;
   var U = ${PAGE_UTILS};
+  U.diag('rewind: installed');
 
   function rpc(method, payload) {
     return fetch('/api/' + method, {
@@ -323,25 +328,25 @@ export const REWIND_SCRIPT = `(function () {
     Object.assign(root.style, {
       position: 'fixed', left: '50%', top: '50%', transform: 'translate(-50%,-50%)',
       width: '560px', maxWidth: '92vw', maxHeight: '68vh', display: 'flex', flexDirection: 'column',
-      background: '#0f1115', color: '#e6e9ed', border: '1px solid #2a3542', borderRadius: '12px',
-      zIndex: '2147483647', boxShadow: '0 12px 40px rgba(0,0,0,.55)',
+      background: '#ffffff', color: '#1f2733', border: '1px solid #d5dae0', borderRadius: '12px',
+      zIndex: '2147483647', boxShadow: '0 12px 40px rgba(31,39,51,.28)',
       fontFamily: '-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif',
       fontSize: '13px', overflow: 'hidden'
     });
     var head = document.createElement('div');
     Object.assign(head.style, {
       display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px',
-      borderBottom: '1px solid #1e2732', flex: '0 0 auto'
+      borderBottom: '1px solid #e3e7ec', flex: '0 0 auto'
     });
     var hTitle = document.createElement('span');
     hTitle.textContent = '回退到哪一步？';
     Object.assign(hTitle.style, { fontWeight: '600' });
     var hSub = document.createElement('span');
     hSub.textContent = '将从此处开新分支继续（原会话保留）';
-    Object.assign(hSub.style, { color: '#8a94a3', fontSize: '12px', flex: '1', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' });
+    Object.assign(hSub.style, { color: '#7a8694', fontSize: '12px', flex: '1', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' });
     var hClose = document.createElement('button');
     hClose.textContent = '✕';
-    Object.assign(hClose.style, { background: 'none', border: 'none', color: '#8a94a3', cursor: 'pointer', fontSize: '14px', padding: '2px 6px' });
+    Object.assign(hClose.style, { background: 'none', border: 'none', color: '#7a8694', cursor: 'pointer', fontSize: '14px', padding: '2px 6px' });
     hClose.onclick = close;
     head.appendChild(hTitle); head.appendChild(hSub); head.appendChild(hClose);
     root.appendChild(head);
@@ -355,7 +360,7 @@ export const REWIND_SCRIPT = `(function () {
       if (items.length === 0) {
         var empty = document.createElement('div');
         empty.textContent = '没有可回退的提示词';
-        Object.assign(empty.style, { padding: '24px', textAlign: 'center', color: '#8a94a3' });
+        Object.assign(empty.style, { padding: '24px', textAlign: 'center', color: '#7a8694' });
         list.appendChild(empty);
         return;
       }
@@ -363,11 +368,11 @@ export const REWIND_SCRIPT = `(function () {
         var row = document.createElement('div');
         Object.assign(row.style, {
           display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 10px', borderRadius: '8px', cursor: 'pointer',
-          background: i === sel ? '#1b2530' : 'transparent'
+          background: i === sel ? '#eef3fa' : 'transparent'
         });
         var idx = document.createElement('span');
         idx.textContent = it.kind === 'ck' ? '★' : String(i + 1).padStart(2, '0');
-        Object.assign(idx.style, { color: it.kind === 'ck' ? '#e6b64c' : '#5b6470', fontFamily: 'monospace', fontSize: '11px', flex: '0 0 auto', width: '20px' });
+        Object.assign(idx.style, { color: it.kind === 'ck' ? '#b8860b' : '#7a8694', fontFamily: 'monospace', fontSize: '11px', flex: '0 0 auto', width: '20px' });
         var body = document.createElement('div');
         Object.assign(body.style, { flex: '1', minWidth: '0' });
         var t1 = document.createElement('div');
@@ -375,14 +380,14 @@ export const REWIND_SCRIPT = `(function () {
         Object.assign(t1.style, { fontWeight: '500' });
         var t2 = document.createElement('div');
         t2.textContent = it.text;
-        Object.assign(t2.style, { color: '#8a94a3', fontSize: '12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginTop: '2px' });
+        Object.assign(t2.style, { color: '#7a8694', fontSize: '12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginTop: '2px' });
         var t3 = document.createElement('div');
         t3.textContent = it.meta;
-        Object.assign(t3.style, { color: '#5b6470', fontSize: '11px', marginTop: '1px' });
+        Object.assign(t3.style, { color: '#9aa4af', fontSize: '11px', marginTop: '1px' });
         body.appendChild(t1); body.appendChild(t2); body.appendChild(t3);
         var del = document.createElement('button');
         del.textContent = '×';
-        Object.assign(del.style, { background: 'none', border: 'none', color: '#5b6470', cursor: 'pointer', fontSize: '15px', padding: '2px 6px', flex: '0 0 auto', display: it.kind === 'ck' ? 'block' : 'none' });
+        Object.assign(del.style, { background: 'none', border: 'none', color: '#7a8694', cursor: 'pointer', fontSize: '15px', padding: '2px 6px', flex: '0 0 auto', display: it.kind === 'ck' ? 'block' : 'none' });
         del.title = '删除这个检查点';
         del.onclick = function (ev) {
           ev.stopPropagation();
@@ -414,7 +419,7 @@ export const REWIND_SCRIPT = `(function () {
     root.appendChild(list);
     var foot = document.createElement('div');
     foot.textContent = '↑↓ 选择 · Enter 回退 · Esc 关闭 · 回退 = 从该轮之后开新分支（原会话保留）';
-    Object.assign(foot.style, { padding: '8px 14px', borderTop: '1px solid #1e2732', color: '#5b6470', fontSize: '11px', flex: '0 0 auto' });
+    Object.assign(foot.style, { padding: '8px 14px', borderTop: '1px solid #e3e7ec', color: '#7a8694', fontSize: '11px', flex: '0 0 auto' });
     root.appendChild(foot);
     document.body.appendChild(root);
     list.focus();
@@ -459,7 +464,11 @@ export const REWIND_SCRIPT = `(function () {
       U.diag('checkpoint: save name=' + name);
       U.setComposerValue(ta, '');
       if (window.dshDesktop && window.dshDesktop.checkpointSave) {
-        window.dshDesktop.checkpointSave({ name: name }).catch(function (err) { U.diag('checkpoint: ipc error ' + String(err)); });
+        window.dshDesktop.checkpointSave({ name: name }).then(function (r) {
+          U.diag('checkpoint: ipc ok=' + !!(r && r.ok));
+          if (r && r.ok) U.toast('检查点已保存 ✓：' + name);
+          else U.toast('检查点保存失败');
+        }).catch(function (err) { U.diag('checkpoint: ipc error ' + String(err)); U.toast('检查点保存失败：' + String(err)); });
       } else {
         U.toast('检查点功能暂不可用（桌面桥未加载）');
       }
@@ -487,6 +496,183 @@ export const REWIND_SCRIPT = `(function () {
       });
       return;
     }
+    // 未知斜杠命令：记录日志（方便远程排查），消息仍正常发出
+    if (/^[/\\uFF0F]/.test(t) && !/^[/\\uFF0F]btw(?:\\s|$)/.test(t)) {
+      U.diag('slash: unknown command: ' + t.slice(0, 60));
+    }
   }
   window.addEventListener('keydown', onKey, true);
+})()`
+
+/**
+ * 斜杠命令菜单（v0.1.3）：让 /btw /rewind /checkpoint 看得见。
+ * - 输入框内容以 "/" 开头且还没打空格时，在输入框上方弹浅色命令菜单；
+ * - ↑↓ 选择、Enter/Tab/点击 填入命令（填入后可继续敲参数）；
+ * - 完整命令 + Enter → 菜单自动关闭，交给 BTW/REWIND 脚本执行；
+ * - 菜单打开时置 window.__dshSlashOpen = true，历史自动填充据此避让。
+ */
+export const SLASH_MENU_SCRIPT = `(function () {
+  if (window.__dshSlashInstalled) return;
+  window.__dshSlashInstalled = true;
+  window.__dshSlashDiag = { installed: 1, shown: 0, hidden: 0, filled: 0, keyNav: 0, clicked: 0 };
+  function dlog(msg) { try { if (window.dshDesktop && window.dshDesktop.diagLog) window.dshDesktop.diagLog(msg); } catch (e) {} }
+  dlog('slash: installed');
+
+  var CMDS = [
+    { name: 'btw', full: '/btw', desc: '写旁注：记一笔，不发给模型', fill: '/btw ' },
+    { name: 'rewind', full: '/rewind', desc: '回退：从某条提示词开新分支', fill: '/rewind' },
+    { name: 'checkpoint', full: '/checkpoint', desc: '检查点：给当前进度打个书签', fill: '/checkpoint ' }
+  ];
+  var menu = null;
+  var menuSel = 0;
+  var visible = [];
+
+  function openFlag(v) { window.__dshSlashOpen = v; }
+  function getComposer() {
+    var ta = document.activeElement && document.activeElement.tagName === 'TEXTAREA' ? document.activeElement : null;
+    if (ta) return ta;
+    var byPhase = document.querySelector('textarea[data-phase]');
+    return byPhase || null;
+  }
+  function setValue(ta, v) {
+    var proto = HTMLTextAreaElement.prototype;
+    var desc = Object.getOwnPropertyDescriptor(proto, 'value');
+    if (desc && desc.set) desc.set.call(ta, v); else ta.value = v;
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+  function tokenOf(v) {
+    var m = (v || '').match(/^[/\\uFF0F]([^\\s]*)$/);
+    return m ? m[1] : null;
+  }
+  function matches(tok) {
+    if (tok === null) return null;
+    if (tok === '') return CMDS.slice();
+    return CMDS.filter(function (c) { return c.name.indexOf(tok) === 0; });
+  }
+  function hide() {
+    if (menu) { menu.remove(); menu = null; }
+    visible = [];
+    openFlag(false);
+    window.__dshSlashDiag.hidden++;
+  }
+  function render() {
+    if (!menu) return;
+    menu.innerHTML = '';
+    visible.forEach(function (c, i) {
+      var row = document.createElement('div');
+      Object.assign(row.style, {
+        display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 12px', cursor: 'pointer',
+        background: i === menuSel ? '#eef3fa' : 'transparent'
+      });
+      var badge = document.createElement('span');
+      badge.textContent = c.full;
+      Object.assign(badge.style, {
+        fontFamily: 'monospace', fontSize: '12px', fontWeight: '600', color: '#4f8ef7',
+        flex: '0 0 auto', background: '#e8f1fe', borderRadius: '5px', padding: '1px 7px'
+      });
+      var desc = document.createElement('span');
+      desc.textContent = c.desc;
+      Object.assign(desc.style, { color: '#7a8694', fontSize: '12px', flex: '1', minWidth: '0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' });
+      row.appendChild(badge); row.appendChild(desc);
+      row.onmousedown = function (ev) {
+        ev.preventDefault();
+        window.__dshSlashDiag.clicked++;
+        fill(c);
+      };
+      row.onmouseenter = function () { menuSel = i; render(); };
+      menu.appendChild(row);
+    });
+  }
+  function position(ta) {
+    if (!menu || !ta) return;
+    var rect = ta.getBoundingClientRect();
+    var w = menu.offsetWidth, h = menu.offsetHeight;
+    var left = Math.min(Math.max(8, rect.left), window.innerWidth - w - 8);
+    var top = rect.top - h - 8;
+    if (top < 8) top = rect.bottom + 8;
+    menu.style.left = left + 'px';
+    menu.style.top = top + 'px';
+  }
+  function show(ta) {
+    var tok = tokenOf(ta ? ta.value : '');
+    var list = matches(tok);
+    if (!list || list.length === 0) { hide(); return; }
+    if (menu) menu.remove();
+    menu = document.createElement('div');
+    menu.id = 'dsh-slash-menu';
+    Object.assign(menu.style, {
+      position: 'fixed', zIndex: '2147483647', minWidth: '320px', maxWidth: '440px',
+      background: '#ffffff', color: '#1f2733', border: '1px solid #d5dae0', borderRadius: '10px',
+      boxShadow: '0 8px 28px rgba(31,39,51,.22)',
+      fontFamily: '-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif',
+      fontSize: '13px', overflow: 'hidden'
+    });
+    visible = list;
+    if (menuSel >= list.length) menuSel = 0;
+    document.body.appendChild(menu);
+    render();
+    position(ta);
+    openFlag(true);
+    window.__dshSlashDiag.shown++;
+  }
+  function fill(c) {
+    var ta = getComposer();
+    if (ta) setValue(ta, c.fill);
+    hide();
+    window.__dshSlashDiag.filled++;
+    dlog('slash: filled ' + c.full);
+    if (ta) ta.focus();
+  }
+
+  function onKey(e) {
+    if (e.isComposing) return;
+    var ta = getComposer();
+    if (menu) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault(); e.stopPropagation();
+        menuSel = Math.min(visible.length - 1, menuSel + 1); render();
+        window.__dshSlashDiag.keyNav++;
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault(); e.stopPropagation();
+        menuSel = Math.max(0, menuSel - 1); render();
+        window.__dshSlashDiag.keyNav++;
+        return;
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        var tok = tokenOf(ta ? ta.value : '');
+        var exact = tok !== null && CMDS.some(function (c) { return c.name === tok; });
+        if (e.key === 'Enter' && exact) { hide(); return; } // 完整命令：交给 BTW/REWIND 执行
+        e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+        if (visible[menuSel]) fill(visible[menuSel]);
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault(); e.stopPropagation();
+        hide();
+        return;
+      }
+    }
+    if (e.key === '/' || e.key === '\\uFF0F') {
+      setTimeout(function () {
+        var t2 = getComposer();
+        if (t2 && document.activeElement === t2) show(t2);
+      }, 0);
+    }
+  }
+  function onInput(e) {
+    var ta = e.target && e.target.tagName === 'TEXTAREA' ? e.target : null;
+    if (!ta || document.activeElement !== ta) return;
+    if (tokenOf(ta.value) === null) { if (menu) hide(); return; }
+    show(ta);
+  }
+  window.addEventListener('keydown', onKey, true);
+  document.addEventListener('input', onInput, true);
+  document.addEventListener('focusout', function (e) {
+    if (!menu) return;
+    if (e.relatedTarget && menu.contains(e.relatedTarget)) return;
+    hide();
+  }, true);
+  window.addEventListener('blur', function () { if (menu) hide(); }, true);
 })()`
