@@ -19,3 +19,7 @@ shot-text.txt
 probe*.json
 verify*.json
 verify*.txt
+
+# 本机一次性定时唤醒脚本（不入库）
+scripts/resume-dsh.ps1
+scripts/resume-message.txt
