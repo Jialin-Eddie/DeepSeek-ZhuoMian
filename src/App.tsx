@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import Sidebar from './components/Sidebar'
 import ChatView from './components/ChatView'
 import TimelineRail from './components/TimelineRail'
-import Composer from './components/Composer'
+import Composer, { MODES, MODELS } from './components/Composer'
 import DetailsPanel from './components/DetailsPanel'
 import ApiKeyModal from './components/ApiKeyModal'
 import TabPanels from './components/TabPanels'
@@ -10,7 +10,8 @@ import TrajectoryPanel from './components/TrajectoryPanel'
 import { HeroFish } from './components/official-icons.generated'
 import { PresetIcon, JobsDot, LogIcon, GoalGlyph } from './components/official-header-icons.generated'
 import { IconFolder, IconDots, IconPlus, IconChevronDown } from './components/icons'
-import { MOCK_WORKSPACES, TABS, TabId, TimelineItem, Workspace } from './data'
+import { COMMANDS } from './commands'
+import { ChatMessage, MOCK_WORKSPACES, TABS, TabId, TimelineItem, Workspace } from './data'
 
 const USER_PROMPTS = new Set<string>(['user'])
 
@@ -25,8 +26,10 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<TabId>('conversation')
   const [collapsed, setCollapsed] = useState(false)
   const [detailsOpen, setDetailsOpen] = useState(false)
+  /** 已提交的提示词历史（↑/↓ 翻阅），跨 hero / 底部 composer 共享 */
+  const [promptHistory, setPromptHistory] = useState<string[]>([])
   /** goal dock（官方 nLMEza GoalBar）：有目标时显示在 composer 上方 */
-  const [goal, setGoal] = useState<string | null>('还原 DeepSeek Harness 官方 UI（桌面端）')
+  const [goal] = useState<string | null>('还原 DeepSeek Harness 官方 UI（桌面端）')
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
@@ -48,8 +51,9 @@ export default function App() {
     document.getElementById(`msg-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
-  const handleSend = (text: string) => {
-    if (!text.trim() || !activeSession) return
+  /** 向当前会话追加一条消息（user 或 assistant） */
+  const appendMessage = (partial: Omit<ChatMessage, 'id'>) => {
+    if (!activeSession) return
     const id = `m${Date.now()}`
     setWorkspaces((prev) =>
       prev.map((w) =>
@@ -59,12 +63,119 @@ export default function App() {
               ...w,
               sessions: w.sessions.map((s) =>
                 s.id === activeSession.id
-                  ? { ...s, updatedAt: '刚刚', messages: [...s.messages, { id, role: 'user' as const, text }] }
+                  ? { ...s, updatedAt: '刚刚', messages: [...s.messages, { id, ...partial }] }
                   : s,
               ),
             },
       ),
     )
+  }
+
+  const handleSend = (text: string) => {
+    if (!text.trim() || !activeSession) return
+    // 记录历史（去重 + 上限 50 条）
+    setPromptHistory((prev) => [...prev.filter((x) => x !== text), text].slice(-50))
+    appendMessage({ role: 'user', text })
+  }
+
+  const MODE_ALIASES: Record<string, string> = {
+    auto: 'auto', 自动: 'auto',
+    plan: 'plan', 计划: 'plan',
+    readonly: 'readonly', read: 'readonly', 只读: 'readonly',
+    workspace: 'workspace', 标准: 'workspace', 标准模式: 'workspace',
+    full: 'full', 完全访问: 'full', 无限制: 'full',
+  }
+
+  const helpText = (): string => {
+    const lines: string[] = ['可用命令：', '']
+    for (const g of ['dsh', 'extra'] as const) {
+      lines.push(g === 'dsh' ? 'DeepSeek Harness 原生：' : '演示版附加：')
+      for (const c of COMMANDS.filter((x) => x.group === g)) lines.push(`- ${c.label} — ${c.description}`)
+      lines.push('')
+    }
+    lines.push('提示：输入 `/` 弹出命令菜单；↑/↓ 翻阅历史提示词；「自动」模式下文件编辑会被自动接受。')
+    return lines.join('\n')
+  }
+
+  /** 处理斜杠命令：返回 true 表示已消费（不作为普通消息发送） */
+  const handleSlash = (raw: string): boolean => {
+    const trimmed = raw.trim()
+    if (!trimmed.startsWith('/')) return false
+    const [head, ...rest] = trimmed.slice(1).split(/\s+/)
+    const name = head.toLowerCase()
+    const args = rest.join(' ').trim()
+    const cmd = COMMANDS.find((c) => c.name === name)
+
+    if (!cmd) {
+      appendMessage({ role: 'assistant', text: `未知命令 \`/${head}\`。输入 \`/help\` 查看可用命令。` })
+      return true
+    }
+
+    switch (name) {
+      case 'help':
+        appendMessage({ role: 'assistant', text: helpText() })
+        break
+      case 'clear':
+        setWorkspaces((prev) =>
+          prev.map((w) =>
+            w.id !== activeWs.id || !activeSession
+              ? w
+              : {
+                  ...w,
+                  sessions: w.sessions.map((s) => (s.id === activeSession.id ? { ...s, messages: [], updatedAt: '刚刚' } : s)),
+                },
+          ),
+        )
+        break
+      case 'new':
+        handleNewSession()
+        break
+      case 'theme':
+        setTheme((t) => (t === 'terminal' ? 'chat' : 'terminal'))
+        appendMessage({ role: 'assistant', text: '已切换主题。' })
+        break
+      case 'plan':
+        setMode('plan')
+        appendMessage({ role: 'assistant', text: '已进入计划模式：只读规划，确认后执行。' })
+        break
+      case 'model': {
+        const a = args.toLowerCase()
+        if (!a) {
+          const i = MODELS.findIndex((m) => m.name === model.name && m.effort === model.effort)
+          const next = MODELS[(i + 1) % MODELS.length]
+          setModel(next)
+          appendMessage({ role: 'assistant', text: `已切换到 ${next.name}（${next.effort}）。` })
+        } else if (['high', 'medium', 'low'].includes(a)) {
+          const effort = a[0].toUpperCase() + a.slice(1)
+          setModel((m) => ({ ...m, effort }))
+          appendMessage({ role: 'assistant', text: `推理等级已设为 ${effort}。` })
+        } else {
+          const m = MODELS.find((x) => x.name.toLowerCase().includes(a))
+          if (m) {
+            setModel(m)
+            appendMessage({ role: 'assistant', text: `已切换到 ${m.name}（${m.effort}）。` })
+          } else {
+            appendMessage({ role: 'assistant', text: `未找到模型「${args}」。可用：/model 循环切换，或 /model deepseek-v3、/model low。` })
+          }
+        }
+        break
+      }
+      case 'mode': {
+        const target = MODE_ALIASES[args.toLowerCase()] ?? args.toLowerCase()
+        const m = MODES.find((x) => x.value === target)
+        if (m) {
+          setMode(m.value)
+          appendMessage({ role: 'assistant', text: `已切换为「${m.label}」：${m.hint}` })
+        } else {
+          appendMessage({ role: 'assistant', text: `未知模式「${args}」。可用：auto / plan / readonly / workspace / full（或 自动 / 计划 / 只读 / 标准 / 完全访问）。` })
+        }
+        break
+      }
+      default:
+        // 演示版没有真实引擎：其余命令给出诚实的占位回复
+        appendMessage({ role: 'assistant', text: `\`/${name}\` 已收到。演示版暂未接入真实引擎，此命令不会实际执行。` })
+    }
+    return true
   }
 
   const handleNewSession = () => {
@@ -90,6 +201,8 @@ export default function App() {
     setActiveSessionId(null)
   }
 
+  const modeLabel = MODES.find((m) => m.value === mode)?.label ?? '标准模式'
+
   const composer = (
     <Composer
       mode={mode}
@@ -99,6 +212,8 @@ export default function App() {
       theme={theme}
       onThemeChange={setTheme}
       onSend={handleSend}
+      onSlash={handleSlash}
+      history={promptHistory}
     />
   )
 
@@ -111,6 +226,8 @@ export default function App() {
       theme={theme}
       onThemeChange={setTheme}
       onSend={handleSend}
+      onSlash={handleSlash}
+      history={promptHistory}
       hero
     />
   )
@@ -215,9 +332,9 @@ export default function App() {
               </nav>
             </div>
             <div className="header-actions-row">
-              <span className="preset-chip" title="标准模式">
+              <span className="preset-chip" title={`访问模式：${modeLabel}`}>
                 <PresetIcon />
-                <span>标准模式</span>
+                <span>{modeLabel}</span>
               </span>
               <button className="count-trigger" aria-label="0 个子代理" aria-haspopup="menu">
                 <span className="count">0</span>
@@ -255,7 +372,7 @@ export default function App() {
           hasMessages && activeSession ? (
             <div className="scroll-body">
               <div className="center-body">
-                <ChatView session={activeSession} />
+                <ChatView session={activeSession} mode={mode} />
                 <TimelineRail items={timeline} onJump={handleJump} />
               </div>
               {composerSeat}

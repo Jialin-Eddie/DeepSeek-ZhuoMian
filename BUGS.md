@@ -105,6 +105,19 @@ SyntaxError: The requested module 'node:module' does not provide an export named
 
 ---
 
+## E. 提示词便签（Ctrl+S，2026-08 新增）
+
+实现：`electron/main.ts`（拦截+流程）+ `electron/stashStore.ts`（存储）+ `electron/engineRpc.ts`（工作区解析）+ `electron/stashPage.ts`（页面注入脚本）+ `preload.ts`（浮层→主进程 IPC）。
+
+- **拦截必须放主进程 `before-input-event`**：页面层 keydown 会被官方 UI/Chromium 的「保存网页」抢走；主进程 `preventDefault()` 后页面根本收不到 Ctrl+S。
+- **当前工作区别读 DOM**：用引擎 RPC `POST /api/session.list`（envelope：`{type:'client-request',rpcId,method,params:{},payload:{}}`），取 `running:true` 且 `updatedAt` 最新的会话的 `cwd`。服务端状态，UI 版本升级不碎。
+- **页面注入**：`webContents.executeJavaScript` 注入 toast/浮层（page world，不碰官方资产）；浮层内删除走 `contextBridge` 暴露的 `window.dshDesktop.stashDelete(id)`。
+- **React 受控 textarea 写入**：直接 `el.value = v` 不生效，要用原生 setter（`Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set`）+ dispatch `input` 事件。官方 composer 已确认是 textarea（`dsh-client-ui-conversation` 渲染 `jsx("textarea")`）。
+- **存储**：`~/.dsh/stash/<sanitizeKey(cwd)>.json`，同文去重置顶、上限 50 条、原子写（tmp+rename）。
+- **沙箱限制**：本会话沙箱下 Electron 无法启动（named pipe 拒绝访问 `platform_channel.cc FATAL`），只能单测非 electron 模块（`scripts/stash-syntax-test.cjs` + node 直跑 stashStore/engineRpc）。UI 交互需真机验证。
+
+---
+
 ## C. 环境 / 工具
 
 ### C1. 并发开发流程互相杀 electron 进程

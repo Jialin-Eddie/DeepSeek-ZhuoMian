@@ -768,10 +768,26 @@ body {
   background: var(--dsw-specific-input-major); border: 1px solid var(--dsw-alias-border-l1); border-radius: 6px; color: var(--dsw-alias-label-tertiary);
 }
 .tool-card.tool-running { border-color: var(--dsw-alias-state-warn-primary); }
+.tool-card.tool-pending { border-color: var(--dsw-alias-state-warn-primary); }
+.tool-card.tool-done { border-color: var(--dsw-alias-state-success-primary); }
 .tool-card.tool-error { border-color: var(--dsw-alias-state-error-primary); }
 .tool-name { color: var(--dsw-alias-state-business-primary); font-family: var(--font-mono); font-weight: 600; flex-shrink: 0; font-size: 12px; }
 .tool-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tool-detail { color: var(--dsw-alias-label-caption); font-size: 12px; flex-shrink: 0; font-family: var(--font-mono); }
+.tool-actions { display: inline-flex; gap: 6px; flex-shrink: 0; margin-left: 4px; }
+.tool-allow, .tool-deny {
+  border: 1px solid var(--dsw-alias-border-l2); background: none; color: var(--dsw-alias-label-secondary);
+  font-family: inherit; font-size: 12px; line-height: 1; padding: 5px 10px; border-radius: 6px; cursor: pointer;
+}
+.tool-allow:hover { color: var(--dsw-alias-state-success-primary); border-color: var(--dsw-alias-state-success-primary); }
+.tool-deny:hover { color: var(--dsw-alias-state-error-primary); border-color: var(--dsw-alias-state-error-primary); }
+
+/* 自动模式徽标（Claude Code acceptEdits 同款语义） */
+.auto-pill {
+  display: inline-flex; align-items: center; height: 22px; padding: 0 10px; border-radius: 999px;
+  background: var(--dsw-alias-fill-tsp-secondary); color: var(--dsw-alias-state-success-primary);
+  font-size: 12px; gap: 4px; white-space: nowrap; margin-left: 8px; border: 1px solid var(--dsw-alias-border-l1);
+}
 
 /* ============ 时间轴 ============ */
 .timeline { width: 56px; flex-shrink: 0; border-left: 1px solid var(--dsw-alias-border-l1); background: var(--dsw-specific-sidebar-fill); position: relative; padding: 16px 8px; }

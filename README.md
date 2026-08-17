@@ -11,6 +11,7 @@
 - 会话列表 + 时间轴导航（悬停预览 prompt，点击跳转）
 - B4 界面：**终端风 ⇄ 聊天风** 一键切换
 - 本地引擎：自动拉起 DeepSeek Harness 后端（`dsh web`）
+- **Ctrl+S 提示词便签**：输入框有字 = 存入当前工作区便签；空 = 弹出列表恢复（↑↓ Enter 插入 / × 删除）；按工作区分文件，存于 `~/.dsh/stash/`
 
 ## UI 还原（对照官方 DeepSeek Harness Web）
 

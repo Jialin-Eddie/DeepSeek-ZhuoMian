@@ -2,9 +2,12 @@ node_modules/
 dist/
 dist-electron/
 release/
+release-v2/
 .npm-cache/
 runtime/
 *.log
+*.tmp
+main.js
 .DS_Store
 
 # 探索/验证产物（可重新生成，不入库）

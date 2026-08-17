@@ -11,7 +11,7 @@ export interface TimelineItem {
 export interface ToolCallCard {
   tool: string
   title: string
-  status: 'running' | 'done' | 'error'
+  status: 'pending' | 'running' | 'done' | 'error'
   detail: string
 }
 
@@ -48,7 +48,7 @@ export const MOCK_WORKSPACES: Workspace[] = [
   {
     id: 'w1',
     name: 'deepseek harness',
-    path: 'C:\\Users\\zhaoj\\projects',
+    path: 'C:\\Users\\demo\\projects',
     sessions: [
       {
         id: 's1',
@@ -76,7 +76,7 @@ export const MOCK_WORKSPACES: Workspace[] = [
             text: 'Refactor plan:\n\n1. Extract a `verifyJwt` middleware for unified validation\n2. Add a `/auth/refresh` endpoint for token renewal\n3. Normalize errors to `{ code, message }`\n\nPlan confirmed — executing in Auto mode.',
             thinking: true,
             tools: [
-              { tool: 'edit', title: 'Apply verifyJwt middleware to auth routes', status: 'running', detail: '…' },
+              { tool: 'edit', title: 'Apply verifyJwt middleware to auth routes', status: 'pending', detail: 'auth/routes.js' },
             ],
           },
         ],

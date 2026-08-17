@@ -14,10 +14,12 @@
     "build:renderer": "vite build",
     "build:electron": "tsc -p tsconfig.electron.json",
     "dist": "npm run build && electron-builder",
-    "start": "electron ."
+    "start": "electron .",
+    "security": "node scripts/security-check.cjs"
   },
   "dependencies": {
     "@deepseek-ai/dsh": "^0.1.0-rc.6",
+    "electron-updater": "^6.8.9",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
@@ -61,6 +63,12 @@
         "zip"
       ],
       "signAndEditExecutable": false
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "Jialin-Eddie",
+      "repo": "DeepSeek-ZhuoMian",
+      "private": false
     },
     "nsis": {
       "oneClick": false,

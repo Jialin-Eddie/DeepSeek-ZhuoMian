@@ -1,13 +1,34 @@
 import { app, BrowserWindow, dialog, ipcMain } from 'electron'
+import { autoUpdater } from 'electron-updater'
 import { spawn, ChildProcessWithoutNullStreams } from 'node:child_process'
-import { writeFileSync, existsSync } from 'node:fs'
+import { writeFileSync, existsSync, mkdirSync, appendFileSync } from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
+import { loadStash, savePrompt, deletePrompt, sanitizeKey } from './stashStore'
+import { resolveActiveWorkspace } from './engineRpc'
+import { READ_SCRIPT, CLOSE_OVERLAY_SCRIPT, buildToastScript, buildOverlayScript } from './stashPage'
 
 let mainWindow: BrowserWindow | null = null
 let backend: ChildProcessWithoutNullStreams | null = null
 let backendPort = 0
 
 const BACKEND_PORT = 3099
+
+/** 提示词便签（Ctrl+S）存储目录：~/.dsh/stash，按工作区一个文件 */
+const STASH_DIR = (): string => path.join(os.homedir(), '.dsh', 'stash')
+let stashOverlayOpen = false
+let stashOverlayWorkspace = 'default'
+
+/** 诊断日志：~/.dsh/stash/diag.log，方便远程排查（失败不影响功能） */
+function diag(msg: string): void {
+  try {
+    const dir = STASH_DIR()
+    mkdirSync(dir, { recursive: true })
+    appendFileSync(path.join(dir, 'diag.log'), `[${new Date().toISOString()}] ${msg}\n`, 'utf8')
+  } catch {
+    /* 忽略 */
+  }
+}
 
 /**
  * 双模式（D1 启动器）：
@@ -102,6 +123,104 @@ function createWindow(): void {
       if (mainWindow) safeLoad(mainWindow, url)
     })()
   }
+
+  // ── 提示词便签：Ctrl+S 拦截（有字=存，空=弹列表恢复） ──
+  // 放在主进程 before-input-event：比页面层可靠，能压过 Chromium 的「保存网页」。
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    if (input.type !== 'keyDown') return
+    if (!input.control || input.shift || input.alt || input.meta) return
+    if (input.key.toLowerCase() !== 's') return
+    event.preventDefault()
+    diag(`Ctrl+S keydown (key=${input.key}) -> handleCtrlS`)
+    void handleCtrlS()
+  })
+
+  // 启动确认：新版启动后在页面右下弹一次提示（也是"代码是否生效"的信号）
+  mainWindow.webContents.on('did-finish-load', () => {
+    void showToast(mainWindow!, '提示词便签已启用：输入框内 Ctrl+S 保存 · 空输入 Ctrl+S 恢复')
+  })
+}
+
+/** 在页面里弹一条短暂提示（page world 注入，不碰官方 UI 结构） */
+async function showToast(win: BrowserWindow, message: string): Promise<void> {
+  try {
+    await win.webContents.executeJavaScript(buildToastScript(message), true)
+  } catch (err) {
+    console.error('[stash] toast failed', err)
+  }
+}
+
+/** 关闭便签浮层（overlay 开着时再按 Ctrl+S = 关闭） */
+async function closeStashOverlay(win: BrowserWindow): Promise<void> {
+  stashOverlayOpen = false
+  try {
+    await win.webContents.executeJavaScript(CLOSE_OVERLAY_SCRIPT, true)
+  } catch {
+    /* 页面未就绪无所谓 */
+  }
+}
+
+/** 打开便签列表浮层（仅当前工作区的条目） */
+async function openStashOverlay(win: BrowserWindow, workspacePath: string): Promise<void> {
+  const file = loadStash(STASH_DIR(), workspacePath)
+  if (file.items.length === 0) {
+    await showToast(win, '这个工作区还没有已保存的提示词 — 在输入框里按 Ctrl+S 保存')
+    return
+  }
+  stashOverlayOpen = true
+  stashOverlayWorkspace = workspacePath
+  const title = path.basename(workspacePath) || workspacePath
+  try {
+    await win.webContents.executeJavaScript(buildOverlayScript(file.items, title), true)
+  } catch (err) {
+    stashOverlayOpen = false
+    diag(`openStashOverlay FAILED ${String(err)}`)
+    console.error('[stash] overlay failed', err)
+  }
+}
+
+/**
+ * Ctrl+S 主流程：
+ * 1. overlay 开着 → 关闭
+ * 2. 聚焦的输入框有内容 → 存进当前工作区的便签
+ * 3. 没有内容 → 弹便签列表
+ */
+async function handleCtrlS(): Promise<void> {
+  const win = mainWindow
+  if (!win || win.isDestroyed()) return
+  diag(`handleCtrlS: overlayOpen=${stashOverlayOpen}`)
+  if (stashOverlayOpen) {
+    await closeStashOverlay(win)
+    diag('handleCtrlS: closed overlay')
+    return
+  }
+
+  const workspace = (await resolveActiveWorkspace(backendPort || BACKEND_PORT)) ?? 'default'
+  diag(`handleCtrlS: workspace=${workspace}`)
+
+  let state: { focused?: boolean; value?: string } | null = null
+  try {
+    state = (await win.webContents.executeJavaScript(READ_SCRIPT, true)) as { focused?: boolean; value?: string }
+    diag(`handleCtrlS: readState=${JSON.stringify(state)}`)
+  } catch (err) {
+    diag(`handleCtrlS: readState FAILED ${String(err)}`)
+  }
+
+  const text = state?.focused ? (state.value ?? '').trim() : ''
+  if (text) {
+    try {
+      const { deduped } = savePrompt(STASH_DIR(), workspace, text)
+      diag(`handleCtrlS: SAVED deduped=${deduped} len=${text.length}`)
+      await showToast(win, deduped ? `已更新便签（同句已置顶）· ${sanitizeKey(workspace)}` : `已保存到提示词便签 · ${sanitizeKey(workspace)}`)
+    } catch (err) {
+      diag(`handleCtrlS: savePrompt FAILED ${String(err)}`)
+      await showToast(win, '保存失败：' + String(err))
+    }
+  } else {
+    const file = loadStash(STASH_DIR(), workspace)
+    diag(`handleCtrlS: no text -> overlay items=${file.items.length}`)
+    await openStashOverlay(win, workspace)
+  }
 }
 
 /**
@@ -176,6 +295,44 @@ function startBackend(): void {
   }
 }
 
+/**
+ * 自动更新（electron-updater，GitHub Releases 源）。
+ * 仅对「安装版（NSIS）」生效；便携/win-unpacked/开发模式静默跳过。
+ * 任何失败只记日志，绝不影响正常使用。
+ */
+function setupAutoUpdate(): void {
+  if (!app.isPackaged) {
+    diag('auto-update: skipped (dev mode)')
+    return
+  }
+  autoUpdater.autoDownload = true
+  autoUpdater.logger = {
+    info: (m?: unknown) => diag(`updater: ${String(m)}`),
+    warn: (m?: unknown) => diag(`updater:WARN ${String(m)}`),
+    error: (m?: unknown) => diag(`updater:ERR ${String(m)}`),
+    debug: (m?: unknown) => diag(`updater:DBG ${String(m)}`),
+  }
+  autoUpdater.on('update-downloaded', async (info) => {
+    diag(`auto-update: downloaded ${info.version}`)
+    if (!mainWindow) return
+    const { response } = await dialog.showMessageBox(mainWindow, {
+      type: 'info',
+      title: '发现新版本',
+      message: `新版本 ${info.version} 已下载完成`,
+      detail: '重启后自动完成更新，会话与数据不会丢失。',
+      buttons: ['立即重启更新', '稍后'],
+      defaultId: 0,
+      cancelId: 1,
+    })
+    if (response === 0) autoUpdater.quitAndInstall()
+  })
+  autoUpdater.on('error', (err) => diag(`auto-update: error ${String(err)}`))
+  // 延迟 8s 再检查，不拖慢启动
+  setTimeout(() => {
+    autoUpdater.checkForUpdates().catch((err) => diag(`auto-update: check failed ${String(err)}`))
+  }, 8000)
+}
+
 ipcMain.handle('backend:port', () => backendPort)
 
 ipcMain.handle('dialog:pickFolder', async () => {
@@ -183,6 +340,17 @@ ipcMain.handle('dialog:pickFolder', async () => {
   const r = await dialog.showOpenDialog(mainWindow, { properties: ['openDirectory'] })
   if (r.canceled || r.filePaths.length === 0) return null
   return r.filePaths[0]
+})
+
+// ── 提示词便签 IPC（浮层在页面 world 里，通过 contextBridge 调回主进程） ──
+ipcMain.handle('stash:delete', (_e, id: string) => {
+  if (!stashOverlayOpen) return false
+  return deletePrompt(STASH_DIR(), stashOverlayWorkspace, id)
+})
+
+ipcMain.handle('stash:closed', () => {
+  stashOverlayOpen = false
+  return true
 })
 
 app.whenReady().then(() => {
@@ -194,6 +362,7 @@ app.whenReady().then(() => {
 
   startBackend()
   createWindow()
+  setupAutoUpdate()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()

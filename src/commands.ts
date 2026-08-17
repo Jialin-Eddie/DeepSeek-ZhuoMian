@@ -31,7 +31,10 @@ export const COMMANDS: CommandDef[] = [
 
   // ---- Our additions (Claude Code / Codex-inspired) ----
   { name: 'clear', label: '/clear', description: '清空当前对话', group: 'extra' },
-  { name: 'model', label: '/model', description: '切换模型', group: 'extra' },
+  { name: 'new', label: '/new', description: '新建会话', group: 'extra' },
+  { name: 'model', label: '/model', description: '切换模型（/model deepseek-v3 或 /model low）', group: 'extra' },
+  { name: 'mode', label: '/mode', description: '切换访问模式（auto / plan / readonly / workspace / full）', group: 'extra' },
+  { name: 'theme', label: '/theme', description: '切换主题', group: 'extra' },
   { name: 'mcp', label: '/mcp', description: '配置 MCP 工具服务器', group: 'extra' },
   { name: 'agents', label: '/agents', description: '管理子代理', group: 'extra' },
   { name: 'rewind', label: '/rewind', description: '回退到之前的检查点', group: 'extra' },
