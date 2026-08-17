@@ -23,6 +23,14 @@ const api = {
     ipcRenderer.invoke('checkpoint:list'),
   /** 删除一个检查点 */
   checkpointDelete: (id: string): Promise<boolean> => ipcRenderer.invoke('checkpoint:delete', id),
+  /** 参照对话：收藏一句话（功能2） */
+  referenceAdd: (input: { sessionId: string; sessionTitle: string; text: string }): Promise<{ ok: boolean; item?: unknown; error?: string }> =>
+    ipcRenderer.invoke('reference:add', input),
+  /** 参照对话：列出本工作区收藏 */
+  referenceList: (): Promise<{ items: Array<{ id: string; sessionId: string; sessionTitle: string; text: string; createdAt: number }> }> =>
+    ipcRenderer.invoke('reference:list'),
+  /** 参照对话：取消一条收藏 */
+  referenceDelete: (id: string): Promise<boolean> => ipcRenderer.invoke('reference:delete', id),
 }
 
 contextBridge.exposeInMainWorld('dshDesktop', api)

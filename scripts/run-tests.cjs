@@ -34,9 +34,19 @@ run('单元测试 unit-tests', process.execPath, [path.join(ROOT, 'scripts', 'un
     console.log('  ⤷ SKIP: 引擎不在线（3099），跳过 e2e 探针。请在引擎运行后重跑 npm run test 完成全量验证。')
   } else {
     const electronExe = path.join(ROOT, 'node_modules', 'electron', 'dist', 'electron.exe')
-    const probe = path.join(ROOT, 'scripts', 'probe-v011.cjs')
-    const r = run('端到端探针 probe-v011（btw/rewind/clear/rail）', electronExe, [probe], { timeout: 180000 })
-    if (r.error && String(r.error).includes('timeout')) failed.push('端到端探针(超时)')
+    const probes = [
+      { name: '端到端探针 probe-v011（btw/rewind/clear/rail）', file: 'probe-v011.cjs' },
+      { name: '端到端探针 v012-scroll（功能3 滚动定位）', file: 'probe-v012-scroll.cjs' },
+      { name: '端到端探针 v012-history（功能1 历史提示词）', file: 'probe-v012-history.cjs' },
+      { name: '端到端探针 v012-notify（功能4 右下角通知）', file: 'probe-v012-notify.cjs' },
+      { name: '端到端探针 v012-railall（功能5 全量节点轨道）', file: 'probe-v012-railall.cjs' },
+      { name: '端到端探针 v012-reference（功能2 右侧参照分栏）', file: 'probe-v012-reference.cjs' },
+    ]
+    for (const p of probes) {
+      const probe = path.join(ROOT, 'scripts', p.file)
+      const r = run(p.name, electronExe, [probe], { timeout: 240000 })
+      if (r.error && String(r.error).includes('timeout')) failed.push(p.name + '(超时)')
+    }
   }
   const summary = () => {
     console.log('\n===== 测试汇总 =====')

@@ -199,6 +199,40 @@ SyntaxError: The requested module 'node:module' does not provide an export named
 **经验**：用绝对路径 + 限深度（`-Depth`）查询；深目录递归要设足够 timeout。
 
 ---
+## H. v0.1.2 批次（2026-08-17 晚）：五个新功能（↑历史 / 右侧参照分栏 / 会话停留位置 / 右下角通知 / 全量 prompt 轨道）
+
+### 需求来源
+用户提出 5 个体验改进：① 输入框按 ↑ 调出历史提示词；② 参照某个对话时不用往上翻，固定到右侧（split 效果）+ 收藏好句子 + 底部复制按钮，可取消；③ 模型响应结束后会话不留在结尾，而是"本次提示词命令在屏幕中间"从这里开始阅读（用户强调"这个得有"）；④ 右下角任务完成通知气泡，点击跳转，约 3s 消失，多条可堆叠；⑤ 右侧 prompt 边框要显示一个对话**所有**提示词节点，不能只是已加载的部分。
+
+### 官方 UI 结构探查结论（探针实测 3099 官方界面）
+- 滚动容器 = `div[data-conversation-scroll]`（官方 `dsh-client-ui-conversation` 的 `wSkVaW_scrollBody`），`scrollHeight` 远大于 `clientHeight`。
+- user 提示词节点 = `div[data-chat-flow-kind="user"]`，文本可用 `.gdEzaW_bubble ._text_1pfhk_1`（仍有效）；会话切换时 user 节点集合重建。
+- **每轮结束信号 = `div[data-chat-flow-kind="turn-tail"]` 出现/更新**（官方由 `turn/end` 事件驱动，`publication:"immediate"`）→ 功能3/4 都靠它触发。
+- **官方历史是增量加载**：默认只渲染视口附近，顶部有「加载更早」按钮 → 功能5 的痛点根因；旧 RAIL_SCRIPT 基于 DOM 构建所以只显示已加载部分。
+- 会话行 = `YDXeBa_sessionRow`，无 `data-session-id`；当前会话 `aria-selected="true"`；点行即打开该会话（可借此用 `session.list` 的 running+updatedAt 最新近似"刚打开的行"）。
+- composer = `textarea[data-phase]`（`plain/claimed/submitting/adjudicating`，响应中非 plain）。
+- 会话列表 `session.list` 里 running 会话可能有多个（多窗口），`updatedAt` 最新 ≠ 用户当前看的窗口 —— **checkpoint/参照等按会话定位的功能必须显式指定会话，不能依赖"最新 updatedAt"**（本次踩坑：打检查点落到了另一个窗口的会话）。
+
+### 实现（全部页面注入，不碰官方资产）
+- `SCROLL_SCRIPT`：turn-tail 出现/更新 → 把最后一条 user 节点滚动到 `[data-conversation-scroll]` 视口 **40%** 处（偏上留阅读空间）；会话切换（user 节点集合变化）同样定位；用户主动滚动（wheel/touch/方向键/PageUp 等）后 1.5s 内不抢。**滚动用即时 `scrollTop=` 而非 `scrollTo({behavior:'smooth'})`** —— smooth 在隐藏窗口（探针/无头）里 rAF 不推进、滚动不生效，即时滚动在真实窗口体验一致且可测。
+- `HISTORY_SCRIPT`：空输入框 ↑ → 引擎分页拉本会话 user/message（跳过 `source.kind!=='user'` 的系统注入消息，如 AGENTS.md 提醒）→ 底部浮层 ↑↓ 选择 Enter 回填 Esc 关闭；输入框有内容时 ↑ 不接管。
+- `NOTIFY_SCRIPT`：turn-tail 信号 → 右下角气泡（提示词摘要 + 时间，`✓` 图标），点击跳转到该提示词，3s 淡出，最多堆叠 5 条。
+- `RAIL_ALL_SCRIPT`：引擎 API 分页拉**全部** user/message（最多 600 条、40 页），右侧竖条每格一条（最新蓝色），悬停预览，点击跳转；目标未加载时自动反复点「加载更早」直到出现（最多 30 次）。
+- `REFERENCE_SCRIPT` + `referenceStore.ts` + IPC（`reference:add/list/delete`，`~/.dsh/reference/<ws>.json`，上限 200）：会话行 hover 出现「参照」按钮 → 右侧 400px 分栏显示该会话问/答（分页拉取），每条可 ☆ 收藏（置顶），底部「复制全部收藏」（`navigator.clipboard.writeText`，失败回退 `execCommand('copy')`），✕ 关闭。
+
+### 探针踩坑记录
+- **smooth scroll 不可测**：`scrollTo({behavior:'smooth'})` 在 `show:false` 探针窗口不执行（rAF 不跑），改即时滚动后断言稳定（ratioTop=0.4 精确命中）。
+- **user/message 的 data 结构有两种**：老格式 `{type:"text",text}` 或数组；新格式 `{content:[{type:"text",text}], source:{kind:"user"}}`。extractText 必须都处理，否则新版消息全解析为空 → 历史浮层/参照栏"没有内容"（探针 diag `fetchEmpty:1` 捕获）。
+- **批量跑探针时序敏感**：多个探针先后连同一官方 UI，前序探针注入的按钮/面板/滚动位置会残留，后序探针选会话的"最长"策略可能点到不同会话 → scroll 探针偶发 FAIL（单独跑必过）。run-tests 里 6 个探针顺序执行；如再遇偶发失败先单独重跑确认。
+- **scroll 探针短会话误报**（批量第 2/3 次抓到）：选会话只按 scrollHeight 最大，若选到短会话（如"你好"，sh=9735/ch=762 → 最大可滚 8973），最后一条提示词本就在底部附近，目标 scrollTop=9113 被 clamp 到上限 8973 → `diff<4` 判定"无需滚动" → scrollAttempts=0 误报失败。**修法**：探针只选"可滚动距离 ≥2000px"的会话（`scrollHeight - clientHeight`），并在断言里加"前置：会话足够长"。注意这不是脚本 bug——真实场景内容不够长时本就不该滚动。
+- 探针 preload 桩（`probe-v012-preload.cjs`）需让 `referenceList` 返回内存列表（add 后能查到），否则复制按钮"无内容可复制"直接 return（copied 恒 0）。
+
+### 工程记录
+- 新文件：`electron/featuresV012.ts`（5 个注入脚本）、`electron/referenceStore.ts`（参照收藏存储）、`scripts/probe-v012-{scroll,history,notify,railall,reference}.cjs` + `probe-v012-preload.cjs`；`main.ts` 注入 5 个新脚本并挂 reference IPC；`preload.ts` 加 `referenceAdd/List/Delete`。
+- 测试门禁新增：unit-tests 加 referenceStore 全路径；run-tests 串起 6 个 e2e 探针；stash-syntax-test 加 5 个新脚本语法检查。
+- 已知边界：参照分栏的"打开即钉住"用 `session.list` 近似（点行 → 取最新 running 会话），多窗口同时跑时可能钉到别的窗口会话（与 checkpoint 同因）；功能4/3 的 turn-tail 信号在"正在生成中打开页面"的极端时序下可能漏一次（MutationObserver 只认新增/属性变化）。
+
+---
 
 ## D. 关键结论与约定（速查）
 

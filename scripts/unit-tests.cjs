@@ -1,4 +1,4 @@
-// 单元测试：便签 / 检查点存储 / 引擎 RPC（引擎在线时）
+// 单元测试：便签 / 检查点 / 参照收藏存储 / 引擎 RPC（引擎在线时）
 // 用法：node scripts/unit-tests.cjs；退出码 0=通过，1=失败
 // 引擎不在线时，引擎相关用例自动 WARN 跳过（不阻塞），存储用例始终执行。
 const path = require('node:path')
@@ -8,6 +8,7 @@ const fs = require('node:fs')
 const ROOT = path.resolve(__dirname, '..')
 const S = require(path.join(ROOT, 'dist-electron', 'stashStore.js'))
 const C = require(path.join(ROOT, 'dist-electron', 'checkpointStore.js'))
+const R = require(path.join(ROOT, 'dist-electron', 'referenceStore.js'))
 const E = require(path.join(ROOT, 'dist-electron', 'engineRpc.js'))
 
 let failures = 0
@@ -51,6 +52,25 @@ console.log('--- checkpointStore ---')
   ok(C.deleteCheckpoint(dir, ws, a.id) === true && C.loadCheckpoints(dir, ws).items.length === 1, '删除检查点')
   for (let i = 0; i < 60; i++) C.saveCheckpoint(dir, ws, { name: 'n' + i, sessionId: 's1', atSeq: i })
   ok(C.loadCheckpoints(dir, ws).items.length === 50, '检查点上限 50')
+}
+
+console.log('--- referenceStore ---')
+{
+  const dir = path.join(os.tmpdir(), 'dsh-test-ref-' + Date.now())
+  const ws = 'C:/x/项目 三'
+  const a = R.addReference(dir, ws, { sessionId: 's9', sessionTitle: '会话甲', text: '好句子一' })
+  ok(a.text === '好句子一' && a.sessionId === 's9' && a.sessionTitle === '会话甲', 'addReference 新增收藏')
+  const same = R.addReference(dir, ws, { sessionId: 's9', sessionTitle: '会话甲', text: '好句子一' })
+  let f = R.loadReferences(dir, ws)
+  ok(f.items.length === 1 && same.id === a.id, 'addReference 同会话同文去重')
+  R.addReference(dir, ws, { sessionId: 's9', text: '好句子二' })
+  f = R.loadReferences(dir, ws)
+  ok(f.items.length === 2 && f.items[0].text === '好句子二', '新收藏置顶')
+  ok(R.deleteReference(dir, ws, a.id) === true && R.loadReferences(dir, ws).items.length === 1, 'deleteReference')
+  ok(R.deleteReference(dir, ws, '不存在') === false, 'deleteReference 不存在返回 false')
+  for (let i = 0; i < 220; i++) R.addReference(dir, ws, { sessionId: 's9', text: '批量' + i })
+  ok(R.loadReferences(dir, ws).items.length === 200, '参照收藏上限 200')
+  ok(S.sanitizeKey(ws).length > 0 && R.referencesFilePath(dir, ws).endsWith('.json'), 'referencesFilePath 生成')
 }
 
 console.log('--- engineRpc（引擎在线时） ---')

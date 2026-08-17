@@ -8,7 +8,9 @@ import { loadStash, savePrompt, deletePrompt, sanitizeKey, appendBtwNote } from 
 import { resolveActiveWorkspace, resolveActiveSessionId, historyTail } from './engineRpc'
 import { READ_SCRIPT, CLEAR_SCRIPT, CLOSE_OVERLAY_SCRIPT, buildToastScript, buildOverlayScript } from './stashPage'
 import { RAIL_SCRIPT, BTW_SCRIPT, REWIND_SCRIPT } from './featuresPage'
+import { SCROLL_SCRIPT, HISTORY_SCRIPT, NOTIFY_SCRIPT, RAIL_ALL_SCRIPT, REFERENCE_SCRIPT } from './featuresV012'
 import { loadCheckpoints, saveCheckpoint, deleteCheckpoint } from './checkpointStore'
+import { loadReferences, addReference, deleteReference } from './referenceStore'
 
 let mainWindow: BrowserWindow | null = null
 let backend: ChildProcessWithoutNullStreams | null = null
@@ -20,6 +22,8 @@ const BACKEND_PORT = 3099
 const STASH_DIR = (): string => path.join(os.homedir(), '.dsh', 'stash')
 /** /checkpoint 检查点存储目录：~/.dsh/checkpoints，按工作区一个文件 */
 const CHECKPOINTS_DIR = (): string => path.join(os.homedir(), '.dsh', 'checkpoints')
+/** 参照对话收藏存储目录：~/.dsh/reference，按工作区一个文件 */
+const REFERENCES_DIR = (): string => path.join(os.homedir(), '.dsh', 'reference')
 let stashOverlayOpen = false
 let stashOverlayWorkspace = 'default'
 
@@ -146,6 +150,12 @@ function createWindow(): void {
     void mainWindow!.webContents.executeJavaScript(RAIL_SCRIPT, true).catch((err) => diag(`rail inject failed ${String(err)}`))
     void mainWindow!.webContents.executeJavaScript(BTW_SCRIPT, true).catch((err) => diag(`btw inject failed ${String(err)}`))
     void mainWindow!.webContents.executeJavaScript(REWIND_SCRIPT, true).catch((err) => diag(`rewind inject failed ${String(err)}`))
+    // v0.1.2 新功能：滚动定位 / 历史提示词 / 右下角通知 / 全量 prompt 轨道 / 右侧参照分栏
+    void mainWindow!.webContents.executeJavaScript(SCROLL_SCRIPT, true).catch((err) => diag(`scroll inject failed ${String(err)}`))
+    void mainWindow!.webContents.executeJavaScript(HISTORY_SCRIPT, true).catch((err) => diag(`history inject failed ${String(err)}`))
+    void mainWindow!.webContents.executeJavaScript(NOTIFY_SCRIPT, true).catch((err) => diag(`notify inject failed ${String(err)}`))
+    void mainWindow!.webContents.executeJavaScript(RAIL_ALL_SCRIPT, true).catch((err) => diag(`railall inject failed ${String(err)}`))
+    void mainWindow!.webContents.executeJavaScript(REFERENCE_SCRIPT, true).catch((err) => diag(`reference inject failed ${String(err)}`))
   })
 
   // ── 页面缩放：Ctrl+= / Ctrl+- / Ctrl+0（与 Ctrl+S 互不干扰） ──
@@ -470,6 +480,46 @@ ipcMain.handle('checkpoint:delete', async (_e, id: string) => {
     const workspace = (await resolveActiveWorkspace(port)) ?? 'default'
     const ok = deleteCheckpoint(CHECKPOINTS_DIR(), workspace, String(id ?? ''))
     diag(`checkpoint delete ${ok ? 'ok' : 'miss'} ${String(id)}`)
+    return ok
+  } catch {
+    return false
+  }
+})
+
+// ── 参照对话收藏（功能2：右侧参照分栏的收藏句子，本机持久化） ──
+ipcMain.handle('reference:add', async (_e, input: { sessionId?: string; sessionTitle?: string; text?: string }) => {
+  try {
+    const port = backendPort || BACKEND_PORT
+    const workspace = (await resolveActiveWorkspace(port)) ?? 'default'
+    const item = addReference(REFERENCES_DIR(), workspace, {
+      sessionId: String(input?.sessionId ?? ''),
+      sessionTitle: String(input?.sessionTitle ?? ''),
+      text: String(input?.text ?? ''),
+    })
+    diag(`reference add ${item.id} ws=${sanitizeKey(workspace)}`)
+    return { ok: true, item }
+  } catch (err) {
+    diag(`reference add FAILED ${String(err)}`)
+    return { ok: false, error: String(err) }
+  }
+})
+
+ipcMain.handle('reference:list', async () => {
+  try {
+    const port = backendPort || BACKEND_PORT
+    const workspace = (await resolveActiveWorkspace(port)) ?? 'default'
+    return loadReferences(REFERENCES_DIR(), workspace)
+  } catch {
+    return { workspacePath: '', items: [] }
+  }
+})
+
+ipcMain.handle('reference:delete', async (_e, id: string) => {
+  try {
+    const port = backendPort || BACKEND_PORT
+    const workspace = (await resolveActiveWorkspace(port)) ?? 'default'
+    const ok = deleteReference(REFERENCES_DIR(), workspace, String(id ?? ''))
+    diag(`reference delete ${ok ? 'ok' : 'miss'} ${String(id)}`)
     return ok
   } catch {
     return false
