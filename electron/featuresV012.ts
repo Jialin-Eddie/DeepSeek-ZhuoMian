@@ -714,28 +714,28 @@ export const RAIL_ALL_SCRIPT = `(function () {
     Object.assign(rail.style, {
       position: 'fixed', right: '10px', top: '50%', transform: 'translateY(-50%)',
       zIndex: '2147483646', display: 'flex', flexDirection: 'column', alignItems: 'center',
-      gap: '7px', padding: '10px 6px', background: 'rgba(15,17,21,.55)',
-      border: '1px solid #2a3542', borderRadius: '10px',
-      boxShadow: '0 4px 16px rgba(0,0,0,.3)',
+      gap: '7px', padding: '10px 6px', background: 'rgba(255,255,255,.85)',
+      border: '1px solid #d5dae0', borderRadius: '10px',
+      boxShadow: '0 2px 12px rgba(30,40,55,.18)',
       maxHeight: '78vh', overflowY: 'auto'
     });
     var tip = document.createElement('div');
     tip.id = TIP_ID;
     Object.assign(tip.style, {
       position: 'fixed', right: '48px', maxWidth: '340px', maxHeight: '160px', overflow: 'auto',
-      background: '#1b222c', color: '#e6e9ed', border: '1px solid #2a3542',
+      background: '#ffffff', color: '#1f2733', border: '1px solid #d5dae0',
       borderRadius: '8px', padding: '8px 10px', fontSize: '12px', lineHeight: '18px',
-      boxShadow: '0 4px 16px rgba(0,0,0,.4)', display: 'none',
+      boxShadow: '0 4px 16px rgba(30,40,55,.2)', display: 'none',
       whiteSpace: 'pre-wrap', wordBreak: 'break-word', zIndex: '2147483647'
     });
     document.body.appendChild(tip);
 
     prompts.forEach(function (p, idx) {
-      var len = Math.min(28, 6 + Math.round(p.text.length / 8));
+      // 长条节点：统一宽度 32px、高度 9px、圆角长条；最新一条蓝色高亮，其余浅灰
       var line = document.createElement('button');
       Object.assign(line.style, {
-        width: len + 'px', height: '7px', border: 'none', borderRadius: '3px',
-        background: idx === prompts.length - 1 ? '#679efe' : '#3a4452',
+        width: '32px', height: '9px', border: 'none', borderRadius: '5px',
+        background: idx === prompts.length - 1 ? '#4f8ef7' : '#c3ccd6',
         cursor: 'pointer', padding: '0', flex: '0 0 auto'
       });
       line.setAttribute('aria-label', '提示词 ' + (idx + 1) + '：' + p.text);

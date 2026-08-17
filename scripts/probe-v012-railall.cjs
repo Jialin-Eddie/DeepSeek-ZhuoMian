@@ -51,7 +51,18 @@ app.whenReady().then(async () => {
     const railInfo = await win.webContents.executeJavaScript(`(() => {
       const r = document.getElementById('dsh-prompt-rail-all');
       if (!r) return { built: false };
-      return { built: true, lines: r.children.length, firstTip: r.children[0] ? r.children[0].getAttribute('aria-label') : null, lastTip: r.children[r.children.length - 1] ? r.children[r.children.length - 1].getAttribute('aria-label') : null };
+      const cs = getComputedStyle(r);
+      const first = r.children[0];
+      const firstCs = first ? getComputedStyle(first) : null;
+      return {
+        built: true, lines: r.children.length,
+        firstTip: r.children[0] ? r.children[0].getAttribute('aria-label') : null,
+        lastTip: r.children[r.children.length - 1] ? r.children[r.children.length - 1].getAttribute('aria-label') : null,
+        bg: cs.backgroundColor,
+        lineW: firstCs ? firstCs.width : null,
+        lineH: firstCs ? firstCs.height : null,
+        lineBg: firstCs ? firstCs.backgroundColor : null,
+      };
     })()`)
     log('rail_all', railInfo)
 
@@ -88,6 +99,8 @@ app.whenReady().then(async () => {
     assert(railInfo && railInfo.lines >= 3, '功能5：轨道含多条提示词节点')
     assert(domCount >= 1 && railInfo && railInfo.lines > domCount, '功能5：轨道节点数 > DOM 已渲染数（显示全部而非仅加载部分）')
     assert(scrollAfter > scrollBefore, '功能5：点击轨道节点触发跳转滚动')
+    assert(railInfo && railInfo.bg && String(railInfo.bg).indexOf('255') !== -1, '样式：轨道背景为浅色（非黑色）')
+    assert(railInfo && railInfo.lineW && parseInt(railInfo.lineW, 10) >= 30 && railInfo.lineH && parseInt(railInfo.lineH, 10) >= 8, '样式：节点为长条（宽≥30px 高≥8px）')
 
     console.log(failures.length === 0 ? '\nE2E_PASS' : '\nE2E_FAIL: ' + failures.join(' ; '))
     app.exit(failures.length === 0 ? 0 : 1)
