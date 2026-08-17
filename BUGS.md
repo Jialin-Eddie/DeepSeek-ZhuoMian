@@ -103,6 +103,12 @@ SyntaxError: The requested module 'node:module' does not provide an export named
 - 未签名 → 对方运行弹 SmartScreen「更多信息 → 仍要运行」。配证书：`build.win.certificateFile`。
 - 图标仍是 Electron 默认。加 `build/icon.ico`。
 
+### B8. 【分发关键】NSIS 安装器在非 ASCII 路径下崩溃（0xC0000005）
+**现象**：`DeepSeek ZhuoMian Setup 0.1.0.exe` 双击/静默（`/S`）运行即崩。Windows 事件日志：出错模块 `System.dll`（NSIS System 插件），异常 0xC0000005，偏移 0x1581。
+**原因**：安装器文件放在含中文的路径（`...\其他文件\deepseek harness\release-v2\`）——NSIS System 插件处理非 ASCII 路径时访问违规（与 B2 的空格/node-gyp 同族：本机项目路径对工具链不友好）。
+**解决**：把 Setup exe **拷到纯 ASCII 路径**（如 `C:\Users\zhaoj\dsh-setup\`）再运行 → 安装成功（静默 `/S` 装到 `%LOCALAPPDATA%\Programs\DeepSeek ZhuoMian`）。
+**分发影响**：给用户的安装包如果放在中文/特殊字符目录也会崩；教程/说明应提示"先拷到英文路径再安装"，或后续改 MSI。
+
 ---
 
 ## E. 提示词便签（Ctrl+S，2026-08 新增）
