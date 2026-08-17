@@ -1,4 +1,5 @@
-const P = require('C:/Users/zhaoj/projects/tonghuashun-projects/其他文件/deepseek harness/dsh-zhuomian/dist-electron/stashPage.js')
+const path = require('node:path')
+const P = require(path.join(__dirname, '..', 'dist-electron', 'stashPage.js'))
 
 function check(name, script) {
   try { new Function(script); console.log('OK  ', name, '(', script.length, 'chars)') }
