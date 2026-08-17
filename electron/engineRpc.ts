@@ -105,11 +105,14 @@ export async function historyTail(port: number, sessionId: string): Promise<Hist
       if (!Array.isArray(evs) || evs.length === 0) return { lastSeq, lastPrompt }
       for (const { event } of evs) {
         if (!event) continue
-        if (typeof event.seq === 'number' && lastSeq === null) lastSeq = event.seq
         if (event.type === 'user/message' && !lastPrompt) {
           const txt = extractText(event.data)
           if (txt) lastPrompt = txt
         }
+      }
+      // 最新事件 seq 只在第一页取（事件升序，页内最后一个即最新）；后续分页是往回找预览，不能再覆盖
+      if (page === 0 && lastSeq === null && evs.length > 0) {
+        lastSeq = evs[evs.length - 1].event?.seq ?? null
       }
       if (lastPrompt || !j?.result?.value?.hasMore) return { lastSeq, lastPrompt }
       beforeSeq = evs[0].event?.seq

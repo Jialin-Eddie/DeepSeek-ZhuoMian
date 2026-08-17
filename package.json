@@ -15,7 +15,7 @@
     "build:electron": "tsc -p tsconfig.electron.json",
     "dist": "npm run build && electron-builder",
     "start": "electron .",
-    "security": "node scripts/security-check.cjs"
+    "security": "node scripts/security-check.cjs", "test": "node scripts/run-tests.cjs"
   },
   "dependencies": {
     "@deepseek-ai/dsh": "^0.1.0-rc.6",

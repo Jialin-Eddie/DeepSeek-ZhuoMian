@@ -224,8 +224,8 @@ export const REWIND_SCRIPT = `(function () {
     var beforeSeq;
     var pages = 0;
     function page() {
-      if (pages >= 5 || out.length >= 100) return Promise.resolve(out);
-      var payload = { sessionId: sessionId, maxMessages: 500 };
+      if (pages >= 4 || out.length >= 100) return Promise.resolve(out);
+      var payload = { sessionId: sessionId, maxMessages: 300 };
       if (beforeSeq !== void 0) payload.beforeSeq = beforeSeq;
       pages++;
       return rpc('session.history', payload).then(function (res) {

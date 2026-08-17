@@ -22,15 +22,21 @@
 
 > 边界说明（详见 BUGS.md F 节）：`/rewind` 的语义是**分叉**（引擎没有"删除后续消息"的 API，官方"分叉"即正道）；`auto mode` 需要引擎级开发（审批无 per-tool 自动批准），不提供伪造版本；mock 界面含演示实现。
 
-## 安全检查（每次 push 前强制）
+## 质量门禁（每次 push 前强制，两道）
 
 ```bash
-npm run security    # 全绿才允许 push（scripts/security-check.cjs）
+npm run security    # ① 安全检查：密钥/边界/个人信息（scripts/security-check.cjs）
+npm run test        # ② 功能测试：语法 + 单元 + 端到端探针（scripts/run-tests.cjs）
 ```
 
-- 已安装 git pre-push 钩子：`git push` 自动先跑安全检查，不过关自动中止（紧急跳过：`SKIP_SECURITY_CHECK=1 git push`，危险，慎用）
+- 已安装 git pre-push 钩子：`git push` 自动先跑**安全检查 + 功能测试**，任一不过关自动中止（紧急跳过：`SKIP_SECURITY_CHECK=1 git push`，危险，慎用）
+- 功能测试组成：
+  - 语法检查：所有注入页面脚本（READ/CLEAR/CLOSE/TOAST/RAIL/BTW/REWIND/OVERLAY）能通过 JS 解析
+  - 单元测试：便签/检查点存储（增删去重上限）+ 引擎 RPC（`listSessions`/`resolveActiveWorkspace`/`historyTail`，引擎在线时）
+  - 端到端探针（`scripts/probe-v011.cjs`，需引擎 3099 在线，否则 WARN 跳过）：连真实官方 UI，注入新脚本，模拟按键实测 /btw（含全角斜杠/空内容）、Ctrl+S 清空、/rewind 浮层与 fork 请求构造、/checkpoint、prompt 轨道尺寸；fork 用 fetch 桩拦截，无副作用
 - 检查项与依据见 [SECURITY_CHECKLIST.md](./SECURITY_CHECKLIST.md)
 - 新克隆仓库后先执行 `node scripts/install-git-hooks.cjs` 重装钩子
+- **约定：任何关键功能改动，必须 `npm run test` 全绿（含引擎在线时的端到端探针）才允许打新版本/发版**
 
 ## UI 还原（对照官方 DeepSeek Harness Web）
 

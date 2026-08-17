@@ -167,6 +167,12 @@ SyntaxError: The requested module 'node:module' does not provide an export named
 ### 单实例锁
 - `app.requestSingleInstanceLock()`：拿不到锁直接 `app.quit()`；`second-instance` → 还原+聚焦已有窗口。根治"便携/安装版同时开 → 抢 3099 → 黑屏"。
 
+### 测试门禁（v0.1.1 起强制，回应"写代码没测试就上线"的教训）
+- 教训：v0.1.0 只有安全门禁 + 语法解析测试，**没有行为测试** → /btw 带病上线；v0.1.1 换包流程连翻三次（任务随引擎被杀 / 计划任务中文路径解码错 / 分页覆盖 lastSeq），都是"没先测就交付"的代价。
+- 新增 `npm run test`（`scripts/run-tests.cjs`）：① 语法（stash-syntax-test）→ ② 单元（unit-tests：stashStore/checkpointStore 全路径 + engineRpc 在线时）→ ③ 端到端探针（probe-v011：连真实官方 UI 注入脚本、模拟按键断言 /btw /rewind /clear /rail /checkpoint；fork 用 fetch 桩拦截无副作用）。任一失败退出码非 0。
+- pre-push 钩子 = security + test 双门禁；引擎不在线时端到端 WARN 跳过（单元/语法必须过），发版前必须引擎在线跑全量。
+- 探针捕获到的真 bug：historyTail 分页时 lastSeq 被后续更旧页覆盖（应只在第一页取最新；上一版"取页内最旧"也是同因）。已修并纳入断言（lastSeq 需为会话最新事件序号）。
+
 ### 工程记录
 - 官方 composer 的 textarea 带 `data-phase` 属性（`dsh-client-ui-conversation`：`<textarea ... data-phase={input?.phase ?? "inert"} ...>`）；React 事件挂在根容器（bubble 阶段），window capture 先于它。
 - `session.history` 事件类型实测：`user/message`（data 为 `{type:"text",text}` 或数组）、`turn/start`、`turn/end`、`assistant/chunk`、`assistant/message`、`tool/call`；分页用 `beforeSeq`（更早）+ `maxMessages`，有 `hasMore`。

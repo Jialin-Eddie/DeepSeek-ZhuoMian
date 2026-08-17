@@ -24,6 +24,17 @@ function log(k, v) {
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+/** 轮询等待页面条件成立（最多 timeoutMs），页面脚本历史分页耗时不定，不能固定 sleep */
+async function waitFor(pred, timeoutMs) {
+  const deadline = Date.now() + timeoutMs
+  for (;;) {
+    let v = false
+    try { v = !!(await pred()) } catch { v = false }
+    if (v) return true
+    if (Date.now() > deadline) return false
+    await sleep(500)
+  }
+}
 
 app.whenReady().then(async () => {
   try {
@@ -174,10 +185,10 @@ app.whenReady().then(async () => {
       log('clear_script', 'ERR: ' + String(e))
     }
 
-    // 9. /rewind 打开浮层
+    // 9. /rewind 打开浮层（轮询等待，历史大的会话分页拉取需要时间）
     calls.length = 0
     await win.webContents.executeJavaScript(`(${helper})('/rewind')`)
-    await sleep(2500)
+    await waitFor(() => win.webContents.executeJavaScript(`!!document.getElementById('dsh-rewind-overlay')`), 15000)
     const rewindOpen = await win.webContents.executeJavaScript(`(() => {
       const o = document.getElementById('dsh-rewind-overlay');
       if (!o) return { opened: false };
@@ -195,7 +206,7 @@ app.whenReady().then(async () => {
       rows[0].click();
       return 'clicked-first';
     })()`)
-    await sleep(4500)
+    await waitFor(() => win.webContents.executeJavaScript(`window.__probeFork.length > 0`), 12000)
     const forks = await win.webContents.executeJavaScript(`window.__probeFork`)
     log('rewind_fork', { click: forkResult, forks })
 
@@ -208,15 +219,40 @@ app.whenReady().then(async () => {
     // 12. /rewind 3 → 直接回退第 3 条（fork 桩记录）
     await win.webContents.executeJavaScript(`(() => { window.__probeFork.length = 0; return true; })()`)
     await win.webContents.executeJavaScript(`(${helper})('/rewind 3')`)
-    await sleep(2500)
+    await waitFor(() => win.webContents.executeJavaScript(`window.__probeFork.length > 0`), 12000)
     const forks2 = await win.webContents.executeJavaScript(`window.__probeFork`)
     log('rewind_n', forks2)
 
     fs.writeFileSync(path.join(OUT, 'probe-results.json'), JSON.stringify(results, null, 2))
+
+    // ── 断言：关键功能是否真的符合预期 ──
+    const failures = []
+    const assert = (cond, msg) => {
+      if (cond) console.log('  ✓', msg)
+      else { failures.push(msg); console.log('  ✗ FAIL:', msg) }
+    }
+    assert(results.rail && results.rail.built && results.rail.children >= 1, 'rail 构建并含提示词线条')
+    assert(results.rail && results.rail.overflowY === 'auto' && results.rail.maxHeight !== 'none', 'rail 多轮自适应滚动')
+    assert(results.btw_normal && results.btw_normal.calls && results.btw_normal.calls.length === 1 && results.btw_normal.calls[0].note === '测试旁注内容', 'btw 正常：旁注内容被捕获')
+    assert(results.btw_normal && results.btw_normal.valueAfter === '', 'btw 正常：输入框已清空')
+    assert(results.btw_empty && results.btw_empty.toastText && String(results.btw_empty.toastText).includes('内容为空'), 'btw 空内容：提示「内容为空」')
+    assert(results.btw_fullwidth && results.btw_fullwidth.btwCalls && results.btw_fullwidth.btwCalls.length === 1 && results.btw_fullwidth.btwCalls[0].note === '全角旁注', 'btw 全角斜杠 ／btw')
+    assert(results.clear_script && results.clear_script.cleared === true && results.clear_script.valueAfter === '', 'CLEAR_SCRIPT 清空输入框')
+    assert(results.rewind_open && results.rewind_open.opened === true, '/rewind 浮层打开')
+    assert(results.rewind_fork && Array.isArray(results.rewind_fork.forks) && results.rewind_fork.forks.length === 1 &&
+      results.rewind_fork.forks[0].payload && typeof results.rewind_fork.forks[0].payload.atSeq === 'number' &&
+      String(results.rewind_fork.forks[0].payload.sessionId).startsWith('session-'), '/rewind 选中后 fork 请求构造正确')
+    assert(results.checkpoint_save && Array.isArray(results.checkpoint_save) && results.checkpoint_save.some((c) => c.kind === 'checkpointSave' && c.input && c.input.name === '进度测试'), '/checkpoint 拦截并调用保存')
+    assert(results.rewind_n && Array.isArray(results.rewind_n) && results.rewind_n.length === 1 &&
+      results.rewind_n[0].payload && typeof results.rewind_n[0].payload.atSeq === 'number', '/rewind N 直接回退请求正确')
+
+    console.log(failures.length === 0 ? '\nE2E_PASS' : '\nE2E_FAIL: ' + failures.join(' ; '))
+    app.exit(failures.length === 0 ? 0 : 1)
     console.log('DONE')
   } catch (err) {
     console.log('PROBE_ERROR', String(err))
     fs.writeFileSync(path.join(OUT, 'probe-results.json'), JSON.stringify({ error: String(err) }, null, 2))
+    app.exit(1)
   }
-  app.quit()
+  app.exit(0)
 })
