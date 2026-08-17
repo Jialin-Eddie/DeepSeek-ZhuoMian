@@ -171,6 +171,40 @@ export default function App() {
         }
         break
       }
+      case 'btw': {
+        const note = args
+        if (!note) {
+          appendMessage({ role: 'assistant', text: '用法：`/btw <旁注内容>`。旁注只记录、不打断当前任务。' })
+          break
+        }
+        appendMessage({ role: 'assistant', text: `📌 已记录旁注（未发送给模型）：${note}` })
+        break
+      }
+      case 'rewind': {
+        // 演示版回退：撤销最后一轮（从尾部删到并包含最近一条用户消息）
+        if (!activeSession || activeSession.messages.length === 0) {
+          appendMessage({ role: 'assistant', text: '当前会话没有可回退的内容。' })
+          break
+        }
+        const msgs = activeSession.messages
+        let cut = msgs.length
+        for (let i = msgs.length - 1; i >= 0; i--) {
+          cut = i
+          if (msgs[i].role === 'user') break
+        }
+        setWorkspaces((prev) =>
+          prev.map((w) =>
+            w.id !== activeWs.id || !activeSession
+              ? w
+              : {
+                  ...w,
+                  sessions: w.sessions.map((s) => (s.id === activeSession.id ? { ...s, messages: msgs.slice(0, cut) } : s)),
+                },
+          ),
+        )
+        appendMessage({ role: 'assistant', text: '已回退到上一个用户回合之前（演示版回退的是会话内容，非引擎 checkpoint）。' })
+        break
+      }
       default:
         // 演示版没有真实引擎：其余命令给出诚实的占位回复
         appendMessage({ role: 'assistant', text: `\`/${name}\` 已收到。演示版暂未接入真实引擎，此命令不会实际执行。` })

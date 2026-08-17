@@ -12,6 +12,8 @@ const api = {
   stashDelete: (id: string): Promise<boolean> => ipcRenderer.invoke('stash:delete', id),
   /** 便签浮层关闭时通知主进程复位状态 */
   stashClosed: (): Promise<boolean> => ipcRenderer.invoke('stash:closed'),
+  /** /btw 旁注：保存到本机，不发给模型 */
+  btwNote: (note: string): Promise<{ ok: boolean }> => ipcRenderer.invoke('btw:note', note),
 }
 
 contextBridge.exposeInMainWorld('dshDesktop', api)

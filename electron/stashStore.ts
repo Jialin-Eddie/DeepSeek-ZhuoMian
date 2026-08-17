@@ -95,3 +95,46 @@ export function deletePrompt(stashDir: string, workspacePath: string, id: string
   writeStash(stashDir, file)
   return true
 }
+
+// ── /btw 旁注（独立于便签，按工作区一个文件） ──
+
+export interface BtwNote {
+  id: string
+  text: string
+  savedAt: number
+}
+
+export interface BtwNotesFile {
+  workspacePath: string
+  items: BtwNote[]
+}
+
+export function btwNotesPath(stashDir: string, workspacePath: string): string {
+  return path.join(stashDir, `btw-${sanitizeKey(workspacePath)}.json`)
+}
+
+/** 追加一条 /btw 旁注（上限 100 条，超限丢最旧） */
+export function appendBtwNote(stashDir: string, workspacePath: string, text: string): BtwNote {
+  const file = btwNotesPath(stashDir, workspacePath)
+  let notes: BtwNotesFile = { workspacePath, items: [] }
+  try {
+    if (existsSync(file)) {
+      const raw = JSON.parse(readFileSync(file, 'utf8')) as BtwNotesFile
+      if (Array.isArray(raw.items)) notes = { workspacePath, items: raw.items }
+    }
+  } catch {
+    /* 损坏按空处理 */
+  }
+  const now = Date.now()
+  const note: BtwNote = {
+    id: `b${now.toString(36)}${Math.random().toString(36).slice(2, 7)}`,
+    text: text.trim(),
+    savedAt: now,
+  }
+  notes.items = [note, ...notes.items].slice(0, 100)
+  mkdirSync(stashDir, { recursive: true })
+  const tmp = `${file}.tmp`
+  writeFileSync(tmp, JSON.stringify(notes, null, 2), 'utf8')
+  renameSync(tmp, file)
+  return note
+}

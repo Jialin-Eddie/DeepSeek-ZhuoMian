@@ -118,6 +118,25 @@ SyntaxError: The requested module 'node:module' does not provide an export named
 
 ---
 
+## F. 功能落地与诚实边界（2026-08-17 午间批次）
+
+五个功能按"能否在官方模式零侵入落地"分层处理：
+
+### 已落地（官方模式，注入式/壳层，不碰引擎）
+- **Ctrl+放大页面**：主进程 `before-input-event` 拦截 Ctrl+= / Ctrl+- / Ctrl+0 → `webContents.setZoomLevel`，toast 显示百分比。
+- **右边的 prompt 轨道**：注入 `RAIL_SCRIPT`，选择器 `div[data-chat-flow-kind="user"]`（官方自带类型标记，含 `user / assistant-step / tool-call / context / turn-tail`），悬停预览（`.gdEzaW_bubble` 文本）、点击 `scrollIntoView`；MutationObserver + 签名比对（flow key 首尾）防抖重建，避免打字触发重建风暴。
+- **/btw 旁注**：注入 `BTW_SCRIPT`，capture 阶段拦截 composer（页面唯一 textarea）里 `/btw xxx` + Enter → `window.dshDesktop.btwNote()` → 存 `~/.dsh/stash/btw-<workspace>.json` + toast「已记录旁注（未发送给模型）」，输入框清空；不占模型轮次。
+
+### 官方模式做不了（如实标注，不造假）
+- **/rewind（官方）**：引擎 `dsh-session-checkpoint-policy` 是**防崩溃的自动落盘机制**（模型请求前/工具副作用前 checkpoint，fail-closed），**没有用户级恢复/回放 API**；`session.fork` 只能分支不能回退。真 /rewind 需引擎级会话回滚开发 → 后置。mock 界面已实现演示版回退（撤销最后一轮）。
+- **auto mode（官方）**：权限预设是**配置驱动**（`dsh-base/cordis.patch.yml` 里 `presets: { read-only: {sandbox, approval}, workspace-write: {...}, danger-full-access: {sandbox, approval: never} }`），审批只有 `ask / never` 两个值，**没有 per-tool 自动批准**。"自动接受编辑、命令仍询问"在配置层表达不了，需引擎审批策略（`dsh-user-approval` answerer）级开发 → 后置。**不伪造"自动"选项**（把 workspace-write+never 包装成 auto 等于关掉所有询问，危险）。
+
+### 工程记录
+- 官方消息流选择器（探针 `scripts/probe-flow.cjs` + `shot-dom.html` 实测）：`div[data-chat-flow-kind="..."]`、工具行 `div[data-tool]`、用户气泡 `.gdEzaW_userRow .gdEzaW_bubble`。
+- 探针脚本与 DOM 快照（`shot-*`、`probe*.json`）不入库（.gitignore）。
+
+---
+
 ## C. 环境 / 工具
 
 ### C1. 并发开发流程互相杀 electron 进程

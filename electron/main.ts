@@ -4,9 +4,10 @@ import { spawn, ChildProcessWithoutNullStreams } from 'node:child_process'
 import { writeFileSync, existsSync, mkdirSync, appendFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { loadStash, savePrompt, deletePrompt, sanitizeKey } from './stashStore'
+import { loadStash, savePrompt, deletePrompt, sanitizeKey, appendBtwNote } from './stashStore'
 import { resolveActiveWorkspace } from './engineRpc'
 import { READ_SCRIPT, CLOSE_OVERLAY_SCRIPT, buildToastScript, buildOverlayScript } from './stashPage'
+import { RAIL_SCRIPT, BTW_SCRIPT } from './featuresPage'
 
 let mainWindow: BrowserWindow | null = null
 let backend: ChildProcessWithoutNullStreams | null = null
@@ -138,7 +139,47 @@ function createWindow(): void {
   // 启动确认：新版启动后在页面右下弹一次提示（也是"代码是否生效"的信号）
   mainWindow.webContents.on('did-finish-load', () => {
     void showToast(mainWindow!, '提示词便签已启用：输入框内 Ctrl+S 保存 · 空输入 Ctrl+S 恢复')
+    // 注入功能脚本：prompt 轨道 + /btw 旁注（page world，不碰官方资产）
+    void mainWindow!.webContents.executeJavaScript(RAIL_SCRIPT, true).catch((err) => diag(`rail inject failed ${String(err)}`))
+    void mainWindow!.webContents.executeJavaScript(BTW_SCRIPT, true).catch((err) => diag(`btw inject failed ${String(err)}`))
   })
+
+  // ── 页面缩放：Ctrl+= / Ctrl+- / Ctrl+0（与 Ctrl+S 互不干扰） ──
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    if (input.type !== 'keyDown') return
+    if (!input.control || input.shift || input.alt || input.meta) return
+    const k = input.key.toLowerCase()
+    if (k === '=' || k === '+') {
+      event.preventDefault()
+      void zoomPage(0.5)
+    } else if (k === '-') {
+      event.preventDefault()
+      void zoomPage(-0.5)
+    } else if (k === '0') {
+      event.preventDefault()
+      void zoomReset()
+    }
+  })
+}
+
+let zoomLevel = 0
+
+/** 缩放页面并提示百分比（±0.5 档，范围 -200% ~ +400%） */
+async function zoomPage(delta: number): Promise<void> {
+  const win = mainWindow
+  if (!win || win.isDestroyed()) return
+  zoomLevel = Math.max(-2, Math.min(4, zoomLevel + delta))
+  win.webContents.setZoomLevel(zoomLevel)
+  const percent = Math.round(Math.pow(1.2, zoomLevel) * 100)
+  await showToast(win, `页面缩放 ${percent}%`)
+}
+
+async function zoomReset(): Promise<void> {
+  const win = mainWindow
+  if (!win || win.isDestroyed()) return
+  zoomLevel = 0
+  win.webContents.setZoomLevel(0)
+  await showToast(win, '页面缩放 100%')
 }
 
 /** 在页面里弹一条短暂提示（page world 注入，不碰官方 UI 结构） */
@@ -351,6 +392,21 @@ ipcMain.handle('stash:delete', (_e, id: string) => {
 ipcMain.handle('stash:closed', () => {
   stashOverlayOpen = false
   return true
+})
+
+// ── /btw 旁注：保存到 ~/.dsh/stash/btw-<workspace>.json，不发给模型 ──
+ipcMain.handle('btw:note', async (_e, note: string) => {
+  try {
+    const workspace = (await resolveActiveWorkspace(backendPort || BACKEND_PORT)) ?? 'default'
+    const item = appendBtwNote(STASH_DIR(), workspace, note)
+    diag(`btw note saved ${item.id} ws=${sanitizeKey(workspace)}`)
+    void showToast(mainWindow!, `已记录旁注（未发送给模型）· ${sanitizeKey(workspace)}`)
+    return { ok: true }
+  } catch (err) {
+    diag(`btw note FAILED ${String(err)}`)
+    void showToast(mainWindow!, '旁注保存失败：' + String(err))
+    return { ok: false }
+  }
 })
 
 app.whenReady().then(() => {
