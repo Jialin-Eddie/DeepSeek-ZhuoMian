@@ -270,3 +270,5 @@ SyntaxError: The requested module 'node:module' does not provide an export named
 ### 其他修复/怪事
 - **GitHub release v0.1.2 漏传 latest.yml** → 安装版自动更新检查 404（用户 diag.log 里 `auto-update: check failed ... HttpError: 404`）。v0.1.3 发版必须带 latest.yml。
 - **package.json 曾在工作区凭空消失**（git status 显示 D，构建才发现）→ `git checkout -- package.json` 恢复。若构建报找不到 package.json，先查 git status。
+
+- history 探针曾用"第二条文字 ≠ 第一条"断言"更早一条"，但真实会话里用户可能**连续发两条完全相同的提示词**（pre-push 批量跑时抓到）→ 误报 FAIL。改为断言填充索引 `lastIdx: 0→1`（diag 暴露），与文字是否重复无关。

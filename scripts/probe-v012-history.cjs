@@ -85,7 +85,7 @@ app.whenReady().then(async () => {
     log('first_fill', v1 ? v1.slice(0, 60) : null)
     log('no_overlay_after_up', overlay1 === false)
 
-    // 3. 未修改再按 ↑ → 更早一条（两条应不同；只有一条时会相同）
+    // 3. 未修改再按 ↑ → 更早一条（用填充索引断言，文字重复也不误报）
     await win.webContents.executeJavaScript(pressKey('ArrowUp'))
     await sleep(1200)
     const v2 = await getValue()
@@ -132,7 +132,7 @@ app.whenReady().then(async () => {
     if (pc && pc < 2) {
       console.log('  ~ SKIP: 该会话只有 1 条用户提示词，跳过"更早一条"断言')
     } else {
-      assert(v2 && v2 !== v1, '功能1：未修改再按 ↑ 填更早一条提示词')
+      assert(diag1 && diag1.lastIdx === 1 && diag1.filled === 2, '功能1：未修改再按 ↑ 填更早一条提示词（填充索引 0→1）')
     }
     assert(v3 === v1, '功能1：↓ 回到上一条（最近）')
     assert(v4 === '' || v4 === null, '功能1：在最近一条再按 ↓ 清空输入框')

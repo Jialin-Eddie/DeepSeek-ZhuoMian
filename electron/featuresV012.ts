@@ -169,7 +169,7 @@ export const SCROLL_SCRIPT = `(function () {
 export const HISTORY_SCRIPT = `(function () {
   if (window.__dshHistoryInstalled) return;
   window.__dshHistoryInstalled = true;
-  window.__dshHistoryDiag = { onKey: 0, upStart: 0, upNext: 0, downPrev: 0, downClear: 0, filled: 0, fetchDone: 0, fetchEmpty: 0, promptCount: 0, err: null };
+  window.__dshHistoryDiag = { onKey: 0, upStart: 0, upNext: 0, downPrev: 0, downClear: 0, filled: 0, fetchDone: 0, fetchEmpty: 0, promptCount: 0, lastIdx: -1, err: null };
 
   function rpc(method, payload) {
     return fetch('/api/' + method, {
@@ -312,6 +312,7 @@ export const HISTORY_SCRIPT = `(function () {
     state.idx = idx;
     state.filledText = p.text;
     window.__dshHistoryDiag.filled++;
+    window.__dshHistoryDiag.lastIdx = idx;
     dlog('history: fill #' + (state.prompts.length - idx) + '/' + state.prompts.length);
     try { ta.focus(); } catch (e) {}
   }
