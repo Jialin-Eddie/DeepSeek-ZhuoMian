@@ -14,6 +14,15 @@ const api = {
   stashClosed: (): Promise<boolean> => ipcRenderer.invoke('stash:closed'),
   /** /btw 旁注：保存到本机，不发给模型 */
   btwNote: (note: string): Promise<{ ok: boolean }> => ipcRenderer.invoke('btw:note', note),
+  /** 页面侧诊断日志（写入 ~/.dsh/stash/diag.log，失败不影响功能） */
+  diagLog: (msg: string): Promise<boolean> => ipcRenderer.invoke('diag:log', msg),
+  /** /checkpoint 保存检查点（本机书签：会话 + seq + 名字） */
+  checkpointSave: (input: { name: string }): Promise<{ ok: boolean }> => ipcRenderer.invoke('checkpoint:save', input),
+  /** 列出当前工作区的检查点 */
+  checkpointList: (): Promise<{ items: Array<{ id: string; name: string; sessionId: string; atSeq: number; preview: string; createdAt: number }> }> =>
+    ipcRenderer.invoke('checkpoint:list'),
+  /** 删除一个检查点 */
+  checkpointDelete: (id: string): Promise<boolean> => ipcRenderer.invoke('checkpoint:delete', id),
 }
 
 contextBridge.exposeInMainWorld('dshDesktop', api)

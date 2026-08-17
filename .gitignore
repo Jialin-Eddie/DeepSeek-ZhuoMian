@@ -3,6 +3,8 @@ dist/
 dist-electron/
 release/
 release-v2/
+release-v3/
+release-v4/
 .npm-cache/
 runtime/
 *.log

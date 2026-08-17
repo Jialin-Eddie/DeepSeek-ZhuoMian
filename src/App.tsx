@@ -180,6 +180,10 @@ export default function App() {
         appendMessage({ role: 'assistant', text: `📌 已记录旁注（未发送给模型）：${note}` })
         break
       }
+      case 'checkpoint': {
+        appendMessage({ role: 'assistant', text: `已保存检查点${args ? `「${args}」` : ''}（演示版只做提示；真实引擎版会记录会话进度供 /rewind 回退）。` })
+        break
+      }
       case 'rewind': {
         // 演示版回退：撤销最后一轮（从尾部删到并包含最近一条用户消息）
         if (!activeSession || activeSession.messages.length === 0) {

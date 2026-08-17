@@ -42,15 +42,87 @@ export async function listSessions(port: number): Promise<EngineSession[]> {
  * 3. 失败返回 null（调用方回退 'default'）
  */
 export async function resolveActiveWorkspace(port: number): Promise<string | null> {
+  const s = await resolveActiveSession(port)
+  const cwd = s?.cwd
+  return typeof cwd === 'string' && cwd.length > 0 ? cwd : null
+}
+
+/** 解析「当前活动会话」（与工作区同规则），失败返回 null */
+export async function resolveActiveSessionId(port: number): Promise<string | null> {
+  const s = await resolveActiveSession(port)
+  return s?.sessionId ?? null
+}
+
+async function resolveActiveSession(port: number): Promise<EngineSession | null> {
   try {
     const items = await listSessions(port)
     if (items.length === 0) return null
     const running = items.filter((s) => s.running === true)
     const pool = running.length > 0 ? running : items
     const sorted = [...pool].sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
-    const cwd = sorted[0]?.cwd
-    return typeof cwd === 'string' && cwd.length > 0 ? cwd : null
+    return sorted[0] ?? null
   } catch {
     return null
   }
+}
+
+export interface HistoryTail {
+  lastSeq: number | null
+  lastPrompt: string
+}
+
+/**
+ * 取会话历史尾部：最后事件 seq（供检查点定位）+ 最后一条用户提示词文本（作预览）。
+ * 失败返回 { lastSeq: null, lastPrompt: '' }。
+ */
+export async function historyTail(port: number, sessionId: string): Promise<HistoryTail> {
+  try {
+    const body = JSON.stringify({
+      type: 'client-request',
+      rpcId: 'cp-tail',
+      method: 'session.history',
+      params: {},
+      payload: { sessionId, maxMessages: 50 },
+    })
+    const r = await fetch(`http://127.0.0.1:${port}/api/session.history`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body,
+      signal: AbortSignal.timeout(5000),
+    })
+    if (!r.ok) return { lastSeq: null, lastPrompt: '' }
+    const j = (await r.json()) as {
+      result?: { value?: { events?: Array<{ event?: { seq?: number; type?: string; data?: unknown } }> } }
+    }
+    const evs = j?.result?.value?.events
+    if (!Array.isArray(evs) || evs.length === 0) return { lastSeq: null, lastPrompt: '' }
+    let lastSeq: number | null = null
+    let lastPrompt = ''
+    for (const { event } of evs) {
+      if (!event) continue
+      if (typeof event.seq === 'number') lastSeq = event.seq
+      if (event.type === 'user/message') {
+        const txt = extractText(event.data)
+        if (txt) lastPrompt = txt
+      }
+    }
+    return { lastSeq, lastPrompt }
+  } catch {
+    return { lastSeq: null, lastPrompt: '' }
+  }
+}
+
+function extractText(data: unknown): string {
+  if (data == null) return ''
+  if (typeof data === 'string') return data
+  if (typeof data === 'object' && 'text' in data && typeof (data as { text?: unknown }).text === 'string') {
+    return (data as { text: string }).text
+  }
+  if (Array.isArray(data)) {
+    return data
+      .map((p) => (p && typeof p === 'object' && 'type' in p && (p as { type?: string }).type === 'text' && typeof (p as { text?: unknown }).text === 'string' ? (p as { text: string }).text : ''))
+      .join(' ')
+      .trim()
+  }
+  return ''
 }

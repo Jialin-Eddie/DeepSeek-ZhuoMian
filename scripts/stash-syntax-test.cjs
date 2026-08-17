@@ -8,10 +8,12 @@ function check(name, script) {
 }
 
 check('READ_SCRIPT', P.READ_SCRIPT)
+check('CLEAR_SCRIPT', P.CLEAR_SCRIPT)
 check('CLOSE_OVERLAY_SCRIPT', P.CLOSE_OVERLAY_SCRIPT)
 check('TOAST', P.buildToastScript('已保存到提示词便签 · C_Users_x'))
 check('RAIL_SCRIPT', F.RAIL_SCRIPT)
 check('BTW_SCRIPT', F.BTW_SCRIPT)
+check('REWIND_SCRIPT', F.REWIND_SCRIPT)
 
 const nasty = '他说："你好\n世界" \\ C:\\path \\u0026 <b>html</b> \'单引号\' $99.5'
 check('OVERLAY', P.buildOverlayScript([

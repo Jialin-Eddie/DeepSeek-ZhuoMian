@@ -20,6 +20,19 @@ export const READ_SCRIPT = `(() => {
   };
 })()`
 
+/** 清空当前聚焦的输入框（Ctrl+S 保存成功后调用；保持焦点，React 状态同步更新） */
+export const CLEAR_SCRIPT = `(() => {
+  const byPhase = document.querySelector('textarea[data-phase]');
+  const el = byPhase || (document.activeElement && document.activeElement.tagName === 'TEXTAREA' ? document.activeElement : null);
+  if (!el) return false;
+  const proto = HTMLTextAreaElement.prototype;
+  const desc = Object.getOwnPropertyDescriptor(proto, 'value');
+  if (desc && desc.set) desc.set.call(el, ''); else el.value = '';
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+  el.focus();
+  return true;
+})()`
+
 /** 关闭便签浮层（主进程主动关：overlay 开着时再按 Ctrl+S） */
 export const CLOSE_OVERLAY_SCRIPT = `(() => {
   const el = document.getElementById('dsh-stash-overlay');

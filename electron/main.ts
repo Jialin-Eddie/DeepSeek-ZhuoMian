@@ -5,9 +5,10 @@ import { writeFileSync, existsSync, mkdirSync, appendFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { loadStash, savePrompt, deletePrompt, sanitizeKey, appendBtwNote } from './stashStore'
-import { resolveActiveWorkspace } from './engineRpc'
-import { READ_SCRIPT, CLOSE_OVERLAY_SCRIPT, buildToastScript, buildOverlayScript } from './stashPage'
-import { RAIL_SCRIPT, BTW_SCRIPT } from './featuresPage'
+import { resolveActiveWorkspace, resolveActiveSessionId, historyTail } from './engineRpc'
+import { READ_SCRIPT, CLEAR_SCRIPT, CLOSE_OVERLAY_SCRIPT, buildToastScript, buildOverlayScript } from './stashPage'
+import { RAIL_SCRIPT, BTW_SCRIPT, REWIND_SCRIPT } from './featuresPage'
+import { loadCheckpoints, saveCheckpoint, deleteCheckpoint } from './checkpointStore'
 
 let mainWindow: BrowserWindow | null = null
 let backend: ChildProcessWithoutNullStreams | null = null
@@ -17,6 +18,8 @@ const BACKEND_PORT = 3099
 
 /** 提示词便签（Ctrl+S）存储目录：~/.dsh/stash，按工作区一个文件 */
 const STASH_DIR = (): string => path.join(os.homedir(), '.dsh', 'stash')
+/** /checkpoint 检查点存储目录：~/.dsh/checkpoints，按工作区一个文件 */
+const CHECKPOINTS_DIR = (): string => path.join(os.homedir(), '.dsh', 'checkpoints')
 let stashOverlayOpen = false
 let stashOverlayWorkspace = 'default'
 
@@ -142,6 +145,7 @@ function createWindow(): void {
     // 注入功能脚本：prompt 轨道 + /btw 旁注（page world，不碰官方资产）
     void mainWindow!.webContents.executeJavaScript(RAIL_SCRIPT, true).catch((err) => diag(`rail inject failed ${String(err)}`))
     void mainWindow!.webContents.executeJavaScript(BTW_SCRIPT, true).catch((err) => diag(`btw inject failed ${String(err)}`))
+    void mainWindow!.webContents.executeJavaScript(REWIND_SCRIPT, true).catch((err) => diag(`rewind inject failed ${String(err)}`))
   })
 
   // ── 页面缩放：Ctrl+= / Ctrl+- / Ctrl+0（与 Ctrl+S 互不干扰） ──
@@ -188,6 +192,15 @@ async function showToast(win: BrowserWindow, message: string): Promise<void> {
     await win.webContents.executeJavaScript(buildToastScript(message), true)
   } catch (err) {
     console.error('[stash] toast failed', err)
+  }
+}
+
+/** 清空当前聚焦输入框（Ctrl+S 保存成功后；React 状态同步更新，保持焦点） */
+async function clearComposer(win: BrowserWindow): Promise<void> {
+  try {
+    await win.webContents.executeJavaScript(CLEAR_SCRIPT, true)
+  } catch (err) {
+    diag(`clearComposer FAILED ${String(err)}`)
   }
 }
 
@@ -252,7 +265,8 @@ async function handleCtrlS(): Promise<void> {
     try {
       const { deduped } = savePrompt(STASH_DIR(), workspace, text)
       diag(`handleCtrlS: SAVED deduped=${deduped} len=${text.length}`)
-      await showToast(win, deduped ? `已更新便签（同句已置顶）· ${sanitizeKey(workspace)}` : `已保存到提示词便签 · ${sanitizeKey(workspace)}`)
+      await clearComposer(win)
+      await showToast(win, deduped ? `已更新便签并清空输入框 · ${sanitizeKey(workspace)}` : `已保存到提示词便签（输入已清空）· ${sanitizeKey(workspace)}`)
     } catch (err) {
       diag(`handleCtrlS: savePrompt FAILED ${String(err)}`)
       await showToast(win, '保存失败：' + String(err))
@@ -409,6 +423,72 @@ ipcMain.handle('btw:note', async (_e, note: string) => {
   }
 })
 
+// ── 页面侧诊断：BTW/REWIND 脚本把拦截细节写进 diag.log，方便远程排查 ──
+ipcMain.handle('diag:log', (_e, msg: string) => {
+  diag(`[page] ${String(msg ?? '')}`)
+  return true
+})
+
+// ── /checkpoint 检查点（本机书签：会话 + seq + 名字，供 /rewind 定位） ──
+ipcMain.handle('checkpoint:save', async (_e, input: { name?: string }) => {
+  try {
+    const port = backendPort || BACKEND_PORT
+    const workspace = (await resolveActiveWorkspace(port)) ?? 'default'
+    const sessionId = await resolveActiveSessionId(port)
+    if (!sessionId) throw new Error('没有可用会话')
+    const tail = await historyTail(port, sessionId)
+    if (tail.lastSeq == null) throw new Error('拿不到会话进度（引擎未就绪？）')
+    const item = saveCheckpoint(CHECKPOINTS_DIR(), workspace, {
+      name: String(input?.name ?? '未命名'),
+      sessionId,
+      atSeq: tail.lastSeq,
+      preview: tail.lastPrompt,
+    })
+    diag(`checkpoint saved ${item.id} ws=${sanitizeKey(workspace)} seq=${item.atSeq}`)
+    void showToast(mainWindow!, `检查点已保存：${item.name} · ${sanitizeKey(workspace)}`)
+    return { ok: true }
+  } catch (err) {
+    diag(`checkpoint save FAILED ${String(err)}`)
+    void showToast(mainWindow!, '检查点保存失败：' + String(err))
+    return { ok: false }
+  }
+})
+
+ipcMain.handle('checkpoint:list', async () => {
+  try {
+    const port = backendPort || BACKEND_PORT
+    const workspace = (await resolveActiveWorkspace(port)) ?? 'default'
+    return loadCheckpoints(CHECKPOINTS_DIR(), workspace)
+  } catch {
+    return { workspacePath: '', items: [] }
+  }
+})
+
+ipcMain.handle('checkpoint:delete', async (_e, id: string) => {
+  try {
+    const port = backendPort || BACKEND_PORT
+    const workspace = (await resolveActiveWorkspace(port)) ?? 'default'
+    const ok = deleteCheckpoint(CHECKPOINTS_DIR(), workspace, String(id ?? ''))
+    diag(`checkpoint delete ${ok ? 'ok' : 'miss'} ${String(id)}`)
+    return ok
+  } catch {
+    return false
+  }
+})
+
+// ── 单实例锁：同时只允许一个 app（便携/安装版混开时，第二个自动聚焦第一个，杜绝端口冲突黑屏） ──
+const gotLock = app.requestSingleInstanceLock()
+if (!gotLock) {
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore()
+      mainWindow.show()
+      mainWindow.focus()
+    }
+  })
+
 app.whenReady().then(() => {
   const shotUrl = process.env.SHOT_URL
   if (shotUrl) {
@@ -424,6 +504,7 @@ app.whenReady().then(() => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
 })
+}
 
 app.on('window-all-closed', () => {
   backend?.kill()

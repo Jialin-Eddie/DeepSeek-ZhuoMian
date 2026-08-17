@@ -131,15 +131,48 @@ SyntaxError: The requested module 'node:module' does not provide an export named
 ### 已落地（官方模式，注入式/壳层，不碰引擎）
 - **Ctrl+放大页面**：主进程 `before-input-event` 拦截 Ctrl+= / Ctrl+- / Ctrl+0 → `webContents.setZoomLevel`，toast 显示百分比。
 - **右边的 prompt 轨道**：注入 `RAIL_SCRIPT`，选择器 `div[data-chat-flow-kind="user"]`（官方自带类型标记，含 `user / assistant-step / tool-call / context / turn-tail`），悬停预览（`.gdEzaW_bubble` 文本）、点击 `scrollIntoView`；MutationObserver + 签名比对（flow key 首尾）防抖重建，避免打字触发重建风暴。
-- **/btw 旁注**：注入 `BTW_SCRIPT`，capture 阶段拦截 composer（页面唯一 textarea）里 `/btw xxx` + Enter → `window.dshDesktop.btwNote()` → 存 `~/.dsh/stash/btw-<workspace>.json` + toast「已记录旁注（未发送给模型）」，输入框清空；不占模型轮次。
+- **/btw 旁注**：注入 `BTW_SCRIPT`，window capture 拦截 composer 里 `/btw xxx` + Enter → `window.dshDesktop.btwNote()` → 存 `~/.dsh/stash/btw-<workspace>.json` + toast「已记录旁注（未发送给模型）」，输入框清空；不占模型轮次。（v0.1.1 修复了"用不了"，详见 G 节。）
 
 ### 官方模式做不了（如实标注，不造假）
-- **/rewind（官方）**：引擎 `dsh-session-checkpoint-policy` 是**防崩溃的自动落盘机制**（模型请求前/工具副作用前 checkpoint，fail-closed），**没有用户级恢复/回放 API**；`session.fork` 只能分支不能回退。真 /rewind 需引擎级会话回滚开发 → 后置。mock 界面已实现演示版回退（撤销最后一轮）。
+- **/rewind 的"删除式回退"（官方）**：引擎 `dsh-session-checkpoint-policy` 是**防崩溃的自动落盘机制**（模型请求前/工具副作用前 checkpoint，fail-closed），**没有用户级恢复/回滚 API**；`session.fork` 只能分支。"删掉后面的消息、在原会话继续"做不了 —— 官方 UI 的"分叉"也是同样语义。v0.1.1 起 /rewind 用 fork 实现**分叉式回退**（见 G 节），mock 界面保留演示版回退（撤销最后一轮）。
 - **auto mode（官方）**：权限预设是**配置驱动**（`dsh-base/cordis.patch.yml` 里 `presets: { read-only: {sandbox, approval}, workspace-write: {...}, danger-full-access: {sandbox, approval: never} }`），审批只有 `ask / never` 两个值，**没有 per-tool 自动批准**。"自动接受编辑、命令仍询问"在配置层表达不了，需引擎审批策略（`dsh-user-approval` answerer）级开发 → 后置。**不伪造"自动"选项**（把 workspace-write+never 包装成 auto 等于关掉所有询问，危险）。
 
 ### 工程记录
 - 官方消息流选择器（探针 `scripts/probe-flow.cjs` + `shot-dom.html` 实测）：`div[data-chat-flow-kind="..."]`、工具行 `div[data-tool]`、用户气泡 `.gdEzaW_userRow .gdEzaW_bubble`。
 - 探针脚本与 DOM 快照（`shot-*`、`probe*.json`）不入库（.gitignore）。
+
+---
+
+## G. v0.1.1 批次（2026-08-17 下午）：/btw 修复 + 存后清空 + /rewind + /checkpoint + 轨道加长 + 单实例锁
+
+### /btw 为什么 v0.1.0 里"用不了"（已修）
+- 旧 `BTW_SCRIPT` 用 `document.querySelector('textarea')` 取 DOM **第一个** textarea —— 官方 UI 的 composer 不保证排第一（其他插件可能有 textarea），`activeElement` 一不匹配拦截就永不触发。Ctrl+S 正常是因为 `READ_SCRIPT` 直接读 `document.activeElement`。
+- 中文输入法两个坑：全角斜杠 `／btw`（`startsWith('/btw')` 失败）；IME 组合中第一次 Enter（`isComposing=true`）被跳过（官方 UI 同样跳过），要按第二次。
+- 空内容 `/btw`：静默清空输入框、零反馈 → 用户以为"用不了"。
+- 修复：composer 定位改 `textarea[data-phase]` → 最大可见 textarea → activeElement；监听改 `window` capture（传播路径最前，先于 React 根容器）；正则兼容全角斜杠；空内容弹本地提示；`window.dshDesktop` 缺失时本地提示；新增 `diag:log` IPC（`[page] btw: ...` 进 `~/.dsh/stash/diag.log`），以后每次 Enter 的匹配结果都有记录，不再盲猜。
+
+### Ctrl+S 存后清空输入框
+- 新 `CLEAR_SCRIPT`（stashPage.ts）：原生 value setter 置空 + dispatch `input`（React 受控组件才更新）+ 保持焦点；保存成功（含同句去重置顶）后执行，toast 改「已保存到提示词便签（输入已清空）」。
+
+### /rewind + /checkpoint（官方模式，真实 API）
+- 引擎 API 面（`dsh-client-connection/lib/client.js` 实测）：`session.list / history / prompt / fork / ...` 共 13 个方法，**无** rewind/restore；`session.fork {sessionId, atSeq?}` → `result.value.sessionId`。
+- fork 服务端语义（`dsh-host-apiproxy` 源码）：`atSeq` 定位「seq >= atSeq 的第一个 `turn/end`」，在其后下一个 `turn/start` 处截断 → atSeq 所在轮完整保留、分支从其后开始。给 `user/message` 的 seq 即"回退到该轮之后"。
+- 官方 UI 自带"分叉"（侧栏 ⋯ → fork）：`ctx.sessions.fork({sessionId, increaseTitle:true}).then(childId => ctx.sessions.open(childId))` —— fork 后自动切新分支；UI 版固定在"最后完成轮"，/rewind 是它的**任意点版本**。
+- `REWIND_SCRIPT`（页面注入）：`/rewind` → 浮层（检查点 + 提示词列表，↑↓ Enter Esc，× 删检查点）→ 页面内同源 fetch `/api/session.fork` → 成功后 MutationObserver 监听侧栏树新增 `[role="treeitem"]` 并点击切换（fork 恰好新增一行；跳过 `aria-selected="true"` 的当前行）；3 秒没等到 → 兜底 toast 去左侧列表点开。`/rewind N` 直接回退第 N 条。`/checkpoint 名字` → 主进程 `historyTail`（最后事件 seq + 最后一条用户提示词做预览）→ 存 `~/.dsh/checkpoints/<ws>.json`（上限 50、同名去重置顶）。
+- 失败模式：选中"当前未完成轮" → 引擎 `fork-unavailable`（toast 原样显示）；无历史 → 提示「没有可回退的提示词或检查点」。
+
+### 轨道加长
+- 线高 4→7px、间距 5→7px、容器 `maxHeight: 78vh` + `overflowY: auto`（多轮自适应滚动）；悬停预览/点击跳转/签名防抖刷新不变。
+
+### 单实例锁
+- `app.requestSingleInstanceLock()`：拿不到锁直接 `app.quit()`；`second-instance` → 还原+聚焦已有窗口。根治"便携/安装版同时开 → 抢 3099 → 黑屏"。
+
+### 工程记录
+- 官方 composer 的 textarea 带 `data-phase` 属性（`dsh-client-ui-conversation`：`<textarea ... data-phase={input?.phase ?? "inert"} ...>`）；React 事件挂在根容器（bubble 阶段），window capture 先于它。
+- `session.history` 事件类型实测：`user/message`（data 为 `{type:"text",text}` 或数组）、`turn/start`、`turn/end`、`assistant/chunk`、`assistant/message`、`tool/call`；分页用 `beforeSeq`（更早）+ `maxMessages`，有 `hasMore`。
+- `session.list` 响应字段是 `result.value.items[]`（**不是** `.sessions`）；活动会话 = `running:true` 优先、否则 `updatedAt` 最大；`resolveActiveWorkspace` v0.1.1 重构为复用 `resolveActiveSession`。
+- `checkpoint:list` 返回整个工作区的检查点，页面按 `sessionId` 过滤当前会话。
+- 构建测试：`npm run build:electron` + `node scripts/stash-syntax-test.cjs`（新脚本 CLEAR/REWIND 已入清单）。
 
 ---
 

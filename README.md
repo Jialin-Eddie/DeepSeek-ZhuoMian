@@ -13,13 +13,14 @@
 - 会话列表 + 时间轴导航（悬停预览 prompt，点击跳转）
 - B4 界面：**终端风 ⇄ 聊天风** 一键切换
 - 本地引擎：自动拉起 DeepSeek Harness 后端（`dsh web`）
-- **Ctrl+S 提示词便签**：输入框有字 = 存入当前工作区便签；空 = 弹出列表恢复（↑↓ Enter 插入 / × 删除）；按工作区分文件，存于 `~/.dsh/stash/`
+- **Ctrl+S 提示词便签**：输入框有字 = 存入当前工作区便签并**清空输入框**；空 = 弹出列表恢复（↑↓ Enter 插入 / × 删除）；按工作区分文件，存于 `~/.dsh/stash/`
 - **Ctrl + 放大页面**：`Ctrl+= / Ctrl+- / Ctrl+0` 缩放并提示百分比
-- **右边的 prompt 轨道**：对话右侧竖条，每条横线 = 一条用户提示词，悬停预览、点击跳转（官方模式注入式实现）
-- **/btw 旁注**：composer 输入 `/btw 内容` + Enter → 存本机旁注（`~/.dsh/stash/btw-*.json`），不发给模型、不打断任务
+- **右边的 prompt 轨道**：对话右侧竖条，每条横线 = 一条用户提示词，悬停预览、点击跳转；轮数多时自动加高并滚动（官方模式注入式实现）
+- **/btw 旁注**：composer 输入 `/btw 内容` + Enter → 存本机旁注（`~/.dsh/stash/btw-*.json`），不发给模型、不打断任务；兼容全角斜杠 `／btw`
+- **/checkpoint + /rewind 回退**：`/checkpoint 名字` 记录当前进度（`~/.dsh/checkpoints/`）；`/rewind` 弹出提示词列表，选中后从该轮**开新分支**继续（引擎 `session.fork atSeq` 真实实现，原会话保留）；支持 `/rewind 3` 直接回退到第 3 条
 - **自动更新**：electron-updater + GitHub Releases（仅安装版生效；便携版/开发模式自动跳过）
 
-> 边界说明（详见 BUGS.md F 节）：`/rewind`（官方模式）与 `auto mode` 需要引擎级开发（checkpoint 无恢复 API / 审批无 per-tool 自动批准），当前不提供伪造版本；mock 界面含演示实现。
+> 边界说明（详见 BUGS.md F 节）：`/rewind` 的语义是**分叉**（引擎没有"删除后续消息"的 API，官方"分叉"即正道）；`auto mode` 需要引擎级开发（审批无 per-tool 自动批准），不提供伪造版本；mock 界面含演示实现。
 
 ## 安全检查（每次 push 前强制）
 
