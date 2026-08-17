@@ -72,39 +72,47 @@ export interface HistoryTail {
 }
 
 /**
- * 取会话历史尾部：最后事件 seq（供检查点定位）+ 最后一条用户提示词文本（作预览）。
+ * 取会话历史尾部：最后事件 seq（供检查点定位）+ 最近一条用户提示词文本（作预览）。
+ * 预览会分页往回找（最多 8 页 × 500 事件），长任务尾部全是工具事件时也能找到。
  * 失败返回 { lastSeq: null, lastPrompt: '' }。
  */
 export async function historyTail(port: number, sessionId: string): Promise<HistoryTail> {
   try {
-    const body = JSON.stringify({
-      type: 'client-request',
-      rpcId: 'cp-tail',
-      method: 'session.history',
-      params: {},
-      payload: { sessionId, maxMessages: 50 },
-    })
-    const r = await fetch(`http://127.0.0.1:${port}/api/session.history`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body,
-      signal: AbortSignal.timeout(5000),
-    })
-    if (!r.ok) return { lastSeq: null, lastPrompt: '' }
-    const j = (await r.json()) as {
-      result?: { value?: { events?: Array<{ event?: { seq?: number; type?: string; data?: unknown } }> } }
-    }
-    const evs = j?.result?.value?.events
-    if (!Array.isArray(evs) || evs.length === 0) return { lastSeq: null, lastPrompt: '' }
     let lastSeq: number | null = null
     let lastPrompt = ''
-    for (const { event } of evs) {
-      if (!event) continue
-      if (typeof event.seq === 'number') lastSeq = event.seq
-      if (event.type === 'user/message') {
-        const txt = extractText(event.data)
-        if (txt) lastPrompt = txt
+    let beforeSeq: number | undefined
+    for (let page = 0; page < 8; page++) {
+      const payload: Record<string, unknown> = { sessionId, maxMessages: 500 }
+      if (beforeSeq !== undefined) payload.beforeSeq = beforeSeq
+      const body = JSON.stringify({
+        type: 'client-request',
+        rpcId: 'cp-tail',
+        method: 'session.history',
+        params: {},
+        payload,
+      })
+      const r = await fetch(`http://127.0.0.1:${port}/api/session.history`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body,
+        signal: AbortSignal.timeout(5000),
+      })
+      if (!r.ok) return { lastSeq, lastPrompt }
+      const j = (await r.json()) as {
+        result?: { value?: { events?: Array<{ event?: { seq?: number; type?: string; data?: unknown } }>; hasMore?: boolean } }
       }
+      const evs = j?.result?.value?.events
+      if (!Array.isArray(evs) || evs.length === 0) return { lastSeq, lastPrompt }
+      for (const { event } of evs) {
+        if (!event) continue
+        if (typeof event.seq === 'number' && lastSeq === null) lastSeq = event.seq
+        if (event.type === 'user/message' && !lastPrompt) {
+          const txt = extractText(event.data)
+          if (txt) lastPrompt = txt
+        }
+      }
+      if (lastPrompt || !j?.result?.value?.hasMore) return { lastSeq, lastPrompt }
+      beforeSeq = evs[0].event?.seq
     }
     return { lastSeq, lastPrompt }
   } catch {
